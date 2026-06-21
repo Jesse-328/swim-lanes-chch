@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { POOLS, LANE_POOLS, TIME_PERIODS, TIME_SLOTS, getLanesForPool, rankPools, friendlyDate, isToday, next365, isLytteltonOpen } from './data.js'
+import { getActiveManualAlerts, mergeAlerts } from './alerts.js'
 
 const C = {
   bg:'#0d1b2a', card:'#112236', card2:'#162b40',
@@ -50,6 +51,93 @@ function Toast({msg,ok}) {
     </div>
   )
 }
+
+// ── ALERT BANNER ─────────────────────────────────────────────────────────────
+// Completely self-contained. Renders nothing if alerts=[].
+// No interaction with any other component.
+
+function AlertBanner({ alerts }) {
+  const [dismissed, setDismissed] = useState([])
+
+  if (!alerts || alerts.length === 0) return null
+
+  const visible = alerts.filter(a => !dismissed.includes(a.poolId + a.type))
+  if (visible.length === 0) return null
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {visible.map(alert => {
+        const pool = POOLS.find(p => p.id === alert.poolId)
+        const isClosed = alert.type === 'closed'
+        const accentColor = isClosed ? '#e8836a' : '#fbbf24'
+        const bgColor = isClosed ? 'rgba(232,131,106,0.08)' : 'rgba(251,191,36,0.08)'
+        const borderColor = isClosed ? 'rgba(232,131,106,0.25)' : 'rgba(251,191,36,0.25)'
+        const icon = isClosed ? '🔴' : '🟡'
+
+        return (
+          <div key={alert.poolId + alert.type}
+            className="fade-up"
+            style={{
+              background: bgColor,
+              border: `1px solid ${borderColor}`,
+              borderRadius: 14,
+              padding: '12px 14px',
+              marginBottom: 8,
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+            }}>
+
+            {/* Icon */}
+            <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>{icon}</span>
+
+            {/* Text */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: accentColor }}>
+                  {pool ? pool.shortName : alert.poolId}
+                </span>
+                <span style={{
+                  fontSize: 10, fontWeight: 600,
+                  color: accentColor,
+                  background: isClosed ? 'rgba(232,131,106,0.12)' : 'rgba(251,191,36,0.12)',
+                  border: `1px solid ${borderColor}`,
+                  borderRadius: 20, padding: '1px 8px',
+                }}>
+                  {isClosed ? 'Closed' : 'Reduced lanes'}
+                </span>
+              </div>
+              <p style={{ fontSize: 12, color: C.creamDim, margin: 0, lineHeight: 1.5 }}>
+                {alert.message}
+              </p>
+              {pool && (
+                <a href={pool.url} target="_blank" rel="noreferrer"
+                  style={{ fontSize: 11, color: accentColor, textDecoration: 'none', marginTop: 4, display: 'inline-block' }}>
+                  Check CCC for updates →
+                </a>
+              )}
+            </div>
+
+            {/* Dismiss */}
+            <button
+              onClick={() => setDismissed(d => [...d, alert.poolId + alert.type])}
+              style={{
+                background: 'none', border: 'none',
+                color: C.textFaint, cursor: 'pointer',
+                fontSize: 16, padding: '0 2px', flexShrink: 0,
+                lineHeight: 1,
+              }}
+              aria-label="Dismiss alert">
+              ✕
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function PeriodPicker({value,onChange}) {
   return (
@@ -171,17 +259,13 @@ function CalModal({value,onChange,onClose}) {
   )
 }
 
-// ── Seasonal pool card ────────────────────────────────────────────────────────
 function SeasonalPoolCard({ pool, date }) {
   const open = isLytteltonOpen(date)
   const monthsUntilOpen = () => {
     const m = date.getMonth() + 1
-    if (m >= 4 && m <= 10) {
-      return 11 - m // months until November
-    }
+    if (m >= 4 && m <= 10) return 11 - m
     return 0
   }
-
   return (
     <div style={{
       background: C.card,
@@ -190,46 +274,31 @@ function SeasonalPoolCard({ pool, date }) {
       opacity: open ? 1 : 0.75,
     }}>
       <div style={{display:'flex',alignItems:'center',gap:10}}>
-        {/* Status dot */}
-        <div style={{
-          width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-          background: open ? pool.color : '#3d5a6a',
-          boxShadow: open ? `0 0 8px ${pool.color}88` : 'none',
-        }}/>
-
+        <div style={{width:10,height:10,borderRadius:'50%',flexShrink:0,
+          background:open?pool.color:'#3d5a6a',
+          boxShadow:open?`0 0 8px ${pool.color}88`:'none'}}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
-            <span style={{fontSize:13,fontWeight:600,color:open?pool.color:C.textDim}}>
-              {pool.shortName}
-            </span>
-            <span style={{
-              fontSize:10,fontWeight:600,
-              color: open ? pool.color : C.textFaint,
-              background: open ? pool.color+'18' : C.card2,
-              border: `1px solid ${open ? pool.color+'44' : C.border}`,
-              borderRadius:20,padding:'1px 8px',
-            }}>
-              {open ? '🌊 Open now' : '❄️ Winter closure'}
+            <span style={{fontSize:13,fontWeight:600,color:open?pool.color:C.textDim}}>{pool.shortName}</span>
+            <span style={{fontSize:10,fontWeight:600,
+              color:open?pool.color:C.textFaint,
+              background:open?pool.color+'18':C.card2,
+              border:`1px solid ${open?pool.color+'44':C.border}`,
+              borderRadius:20,padding:'1px 8px'}}>
+              {open?'🌊 Open now':'❄️ Winter closure'}
             </span>
           </div>
           <div style={{fontSize:11,color:C.textDim}}>
-            {open ? pool.openMessage : pool.closedMessage}
-            {!open && monthsUntilOpen() > 0 && (
-              <span style={{color:C.textFaint}}> · {monthsUntilOpen()} months away</span>
-            )}
+            {open?pool.openMessage:pool.closedMessage}
+            {!open&&monthsUntilOpen()>0&&<span style={{color:C.textFaint}}> · {monthsUntilOpen()} months away</span>}
           </div>
         </div>
-
         <a href={pool.url} target="_blank" rel="noreferrer" style={{
-          background: open ? pool.color : C.card2,
-          color: open ? C.bg : C.textDim,
-          border: `1px solid ${open ? pool.color : C.border}`,
-          borderRadius:10,padding:'6px 12px',
-          fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0,
+          background:open?pool.color:C.card2,color:open?C.bg:C.textDim,
+          border:`1px solid ${open?pool.color:C.border}`,
+          borderRadius:10,padding:'6px 12px',fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0,
         }}>Info →</a>
       </div>
-
-      {/* Features row */}
       <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}>
         {pool.features.map(f=>(
           <span key={f} style={{fontSize:10,color:open?C.textDim:C.textFaint,
@@ -237,12 +306,7 @@ function SeasonalPoolCard({ pool, date }) {
             borderRadius:20,padding:'2px 9px'}}>{f}</span>
         ))}
       </div>
-
-      {open && (
-        <div style={{marginTop:10,fontSize:12,color:C.creamDim,lineHeight:1.5}}>
-          {pool.tip}
-        </div>
-      )}
+      {open&&<div style={{marginTop:10,fontSize:12,color:C.creamDim,lineHeight:1.5}}>{pool.tip}</div>}
     </div>
   )
 }
@@ -357,7 +421,6 @@ function SlotSheet({pool,date,period,onClose}) {
   const slots=TIME_SLOTS.filter(t=>t.hour>=period.hourStart&&t.hour<period.hourEnd)
     .map(slot=>{const i=TIME_SLOTS.findIndex(t=>t.label===slot.label);return{...slot,lanes:lanes[i]}})
   const best=[...slots].filter(s=>s.lanes!==null&&s.lanes!==undefined&&s.lanes>0).sort((a,b)=>b.lanes-a.lanes)[0]
-
   return (
     <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(5,12,20,.90)',zIndex:200,
       display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
@@ -387,7 +450,7 @@ function SlotSheet({pool,date,period,onClose}) {
         )}
         <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:8}}>
           {slots.map(slot=>{
-            const pct=slot.lanes===null||slot.lanes===undefined||slot.lanes===0?0:Math.round((slot.lanes/pool.maxLanes)*100)
+            const pct=!slot.lanes||slot.lanes===0?0:Math.round((slot.lanes/pool.maxLanes)*100)
             const g=grade(pct)
             const isBest=best&&slot.label===best.label
             return (
@@ -405,8 +468,7 @@ function SlotSheet({pool,date,period,onClose}) {
                   <div style={{color:g.text,fontSize:18,fontWeight:700}}>
                     {slot.lanes===null||slot.lanes===undefined?'—':slot.lanes===0?'✕':slot.lanes}
                   </div>
-                  {slot.lanes!==null&&slot.lanes!==undefined&&slot.lanes>0&&
-                    <div style={{color:C.textDim,fontSize:10}}>lanes</div>}
+                  {slot.lanes>0&&<div style={{color:C.textDim,fontSize:10}}>lanes</div>}
                 </div>
               </div>
             )
@@ -468,6 +530,8 @@ function Label({children}) {
     textTransform:'uppercase',marginBottom:10}}>{children}</div>
 }
 
+// ── APP ───────────────────────────────────────────────────────────────────────
+
 export default function App() {
   const todayDate=new Date(); todayDate.setHours(0,0,0,0)
   const [date,setDate]=useState(todayDate)
@@ -478,9 +542,9 @@ export default function App() {
   const [loading,setLoading]=useState(false)
   const [updatedAt,setUpdatedAt]=useState(null)
   const [toast,setToast]=useState(null)
+  const [alerts,setAlerts]=useState(getActiveManualAlerts())
 
   const lyttelton = POOLS.find(p => p.id === 'lyttelton')
-  const lytOpen = isLytteltonOpen(date)
 
   useEffect(()=>{
     const h=new Date().getHours()
@@ -500,6 +564,9 @@ export default function App() {
       const r=await fetch('/api/lanes')
       const j=await r.json()
       setUpdatedAt(j.fetchedAt)
+      // Merge live alerts with manual fallbacks — isolated, no side effects
+      const merged = mergeAlerts(j.alerts || [], getActiveManualAlerts())
+      setAlerts(merged)
       if(j.success) showToast('Lane data refreshed from CCC ✓')
       else showToast('CCC unavailable — showing estimated data',false)
     } catch {
@@ -540,6 +607,11 @@ export default function App() {
       </div>
 
       <div style={{padding:'0 16px 100px'}}>
+
+        {/* ── ALERT BANNER — slots in here, invisible when empty ── */}
+        <div style={{marginTop:4}}>
+          <AlertBanner alerts={alerts} />
+        </div>
 
         {/* Update */}
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22}}>
@@ -599,7 +671,7 @@ export default function App() {
           </p>
         </div>
 
-        {/* Lyttelton seasonal pool */}
+        {/* Seasonal pool */}
         <div style={{marginTop:24}}>
           <Label>🌊 Seasonal pool</Label>
           <SeasonalPoolCard pool={lyttelton} date={date}/>
