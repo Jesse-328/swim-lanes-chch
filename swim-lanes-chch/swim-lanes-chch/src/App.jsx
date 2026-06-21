@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { POOLS, LANE_POOLS, TIME_PERIODS, TIME_SLOTS, getLanesForPool, rankPools, friendlyDate, isToday, next365, isLytteltonOpen } from './data.js'
 import { getActiveManualAlerts, mergeAlerts } from './alerts.js'
+import { getPoolStatus } from './hours.js'
 
 const C = {
   bg:'#0d1b2a', card:'#112236', card2:'#162b40',
@@ -375,6 +376,15 @@ function HeroCard({pool,period,date}) {
 function PoolRow({pool,rank,onSelect,selected}) {
   const pct=Math.round(pool.score*100)
   const g=grade(pct)
+  const status=getPoolStatus(pool.id)
+
+  // Status colour — closing soon is amber, closed is dim, open is subtle
+  const statusColor = status
+    ? status.status==='closing' ? '#fbbf24'
+    : status.status==='closed' ? C.textFaint
+    : C.textFaint
+    : C.textFaint
+
   return (
     <button onClick={onSelect} style={{
       width:'100%',background:selected?pool.color+'12':C.card,
@@ -397,11 +407,20 @@ function PoolRow({pool,rank,onSelect,selected}) {
           {rank===0&&<span style={{fontSize:10,color:pool.color,background:pool.color+'18',
             borderRadius:20,padding:'1px 8px',fontWeight:600}}>Best</span>}
         </div>
-        <div style={{height:3,background:C.border,borderRadius:2,overflow:'hidden'}}>
+        <div style={{height:3,background:C.border,borderRadius:2,overflow:'hidden',marginBottom:5}}>
           <div style={{height:'100%',width:`${pct}%`,
             background:`linear-gradient(90deg,${pool.color}66,${pool.color})`,
             borderRadius:2,transition:'width .5s ease'}}/>
         </div>
+        {/* ── Hours countdown line ── */}
+        {status && (
+          <div style={{fontSize:10,color:statusColor,display:'flex',alignItems:'center',gap:4}}>
+            {status.status==='closing' && <span style={{fontSize:9}}>⚠</span>}
+            {status.status==='closed'  && <span style={{fontSize:9}}>●</span>}
+            {status.status==='open'    && <span style={{fontSize:9,color:pool.color}}>●</span>}
+            {status.label}
+          </div>
+        )}
       </div>
       <div style={{textAlign:'right',flexShrink:0}}>
         <div style={{fontSize:15,fontWeight:700,color:g.text}}>~{Math.round(pool.avg)}</div>
