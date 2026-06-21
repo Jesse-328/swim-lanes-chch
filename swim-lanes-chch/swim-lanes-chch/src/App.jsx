@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { POOLS, LANE_POOLS, TIME_PERIODS, TIME_SLOTS, getLanesForPool, rankPools, friendlyDate, isToday, next365, isLytteltonOpen } from './data.js'
 import { getActiveManualAlerts, mergeAlerts } from './alerts.js'
 import { getPoolStatus } from './hours.js'
+import { hasWomensSession, isWomensSlot } from './womens.js'
 
 const C = {
   bg:'#0d1b2a', card:'#112236', card2:'#162b40',
@@ -11,6 +12,7 @@ const C = {
   navy:'#1a3a52', navyL:'#2a5070',
   border:'#1e3a52', borderL:'#2a5070',
   text:'#f5ede0', textDim:'#8fada0', textFaint:'#3d6a82',
+  womens:'#c084fc',   // soft lavender-purple for women's session accent
 }
 
 function grade(pct) {
@@ -54,8 +56,6 @@ function Toast({msg,ok}) {
 }
 
 // ── ALERT BANNER ─────────────────────────────────────────────────────────────
-// Completely self-contained. Renders nothing if alerts=[].
-// No interaction with any other component.
 
 function AlertBanner({ alerts }) {
   const [dismissed, setDismissed] = useState([])
@@ -88,11 +88,7 @@ function AlertBanner({ alerts }) {
               alignItems: 'flex-start',
               gap: 10,
             }}>
-
-            {/* Icon */}
             <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>{icon}</span>
-
-            {/* Text */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: accentColor }}>
@@ -118,8 +114,6 @@ function AlertBanner({ alerts }) {
                 </a>
               )}
             </div>
-
-            {/* Dismiss */}
             <button
               onClick={() => setDismissed(d => [...d, alert.poolId + alert.type])}
               style={{
@@ -373,12 +367,29 @@ function HeroCard({pool,period,date}) {
   )
 }
 
-function PoolRow({pool,rank,onSelect,selected}) {
+// ── WOMENS SESSION BADGE ──────────────────────────────────────────────────────
+function WomensBadge() {
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 600,
+      color: C.womens,
+      background: 'rgba(192,132,252,0.10)',
+      border: `1px solid rgba(192,132,252,0.28)`,
+      borderRadius: 20, padding: '1px 7px',
+      letterSpacing: 0.2,
+      flexShrink: 0,
+    }}>
+      ♀ Women's
+    </span>
+  )
+}
+
+function PoolRow({pool, rank, onSelect, selected, date, period}) {
   const pct=Math.round(pool.score*100)
   const g=grade(pct)
   const status=getPoolStatus(pool.id)
+  const womens = hasWomensSession(pool.id, date, period)
 
-  // Status colour — closing soon is amber, closed is dim, open is subtle
   const statusColor = status
     ? status.status==='closing' ? '#fbbf24'
     : status.status==='closed' ? C.textFaint
@@ -402,17 +413,17 @@ function PoolRow({pool,rank,onSelect,selected}) {
         {rank+1}
       </div>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:4}}>
+        <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:4,flexWrap:'wrap'}}>
           <span style={{fontSize:13,fontWeight:600,color:selected?pool.color:C.text}}>{pool.shortName}</span>
           {rank===0&&<span style={{fontSize:10,color:pool.color,background:pool.color+'18',
             borderRadius:20,padding:'1px 8px',fontWeight:600}}>Best</span>}
+          {womens && <WomensBadge />}
         </div>
         <div style={{height:3,background:C.border,borderRadius:2,overflow:'hidden',marginBottom:5}}>
           <div style={{height:'100%',width:`${pct}%`,
             background:`linear-gradient(90deg,${pool.color}66,${pool.color})`,
             borderRadius:2,transition:'width .5s ease'}}/>
         </div>
-        {/* ── Hours countdown line ── */}
         {status && (
           <div style={{fontSize:10,color:statusColor,display:'flex',alignItems:'center',gap:4}}>
             {status.status==='closing' && <span style={{fontSize:9}}>⚠</span>}
@@ -440,6 +451,10 @@ function SlotSheet({pool,date,period,onClose}) {
   const slots=TIME_SLOTS.filter(t=>t.hour>=period.hourStart&&t.hour<period.hourEnd)
     .map(slot=>{const i=TIME_SLOTS.findIndex(t=>t.label===slot.label);return{...slot,lanes:lanes[i]}})
   const best=[...slots].filter(s=>s.lanes!==null&&s.lanes!==undefined&&s.lanes>0).sort((a,b)=>b.lanes-a.lanes)[0]
+
+  // Check if any slot in this sheet falls in a women's session
+  const anyWomens = slots.some(s => isWomensSlot(pool.id, date, s.hour))
+
   return (
     <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(5,12,20,.90)',zIndex:200,
       display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
@@ -454,11 +469,35 @@ function SlotSheet({pool,date,period,onClose}) {
             <div style={{fontSize:10,color:C.textDim,textTransform:'uppercase',letterSpacing:1,marginBottom:4}}>
               {period.icon} {period.label} · {friendlyDate(date)}
             </div>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,color:pool.color,fontWeight:700}}>{pool.name}</div>
+            <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,color:pool.color,fontWeight:700}}>{pool.name}</div>
+              {anyWomens && <WomensBadge />}
+            </div>
           </div>
           <button onClick={onClose} style={{background:C.card2,border:'none',color:C.textDim,
             borderRadius:10,padding:'7px 13px',cursor:'pointer',fontSize:15}}>✕</button>
         </div>
+
+        {/* Women's session notice */}
+        {anyWomens && (
+          <div style={{
+            background:'rgba(192,132,252,0.07)',
+            border:'1px solid rgba(192,132,252,0.22)',
+            borderRadius:12,padding:'10px 14px',marginBottom:16,
+            display:'flex',alignItems:'flex-start',gap:9,
+          }}>
+            <span style={{fontSize:15,flexShrink:0}}>♀</span>
+            <div>
+              <div style={{fontSize:12,fontWeight:600,color:C.womens,marginBottom:2}}>Women's swimming session</div>
+              <div style={{fontSize:11,color:C.creamDim,lineHeight:1.5}}>
+                Some slots during this period are women-only. Lane availability may differ.
+                <a href="https://recandsport.ccc.govt.nz/womens-sessions/" target="_blank" rel="noreferrer"
+                  style={{color:C.womens,textDecoration:'none',marginLeft:5}}>CCC info →</a>
+              </div>
+            </div>
+          </div>
+        )}
+
         {best&&(
           <div style={{background:'rgba(126,202,195,0.07)',border:`1px solid ${C.aqua}33`,
             borderRadius:12,padding:'11px 14px',marginBottom:18}}>
@@ -467,21 +506,25 @@ function SlotSheet({pool,date,period,onClose}) {
             <span style={{color:C.textDim,fontSize:12}}> — ~{best.lanes} lanes</span>
           </div>
         )}
+
         <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:8}}>
           {slots.map(slot=>{
             const pct=!slot.lanes||slot.lanes===0?0:Math.round((slot.lanes/pool.maxLanes)*100)
             const g=grade(pct)
             const isBest=best&&slot.label===best.label
+            const isWomens=isWomensSlot(pool.id, date, slot.hour)
             return (
               <div key={slot.label} style={{
                 background:isBest?pool.color+'14':g.bg||C.card2,
-                border:`1px solid ${isBest?pool.color:g.dot+'33'}`,
+                border:`1px solid ${isWomens?'rgba(192,132,252,0.30)':isBest?pool.color:g.dot+'33'}`,
                 borderRadius:12,padding:'11px 13px',
                 display:'flex',justifyContent:'space-between',alignItems:'center',
               }}>
                 <div>
                   <div style={{color:C.text,fontSize:13,fontWeight:600}}>{slot.label}</div>
                   {isBest&&<div style={{color:pool.color,fontSize:10,marginTop:2}}>★ quietest</div>}
+                  {isWomens&&!isBest&&<div style={{color:C.womens,fontSize:10,marginTop:2}}>♀ women's</div>}
+                  {isWomens&&isBest&&<div style={{color:pool.color,fontSize:10,marginTop:2}}>★ quietest · ♀</div>}
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{color:g.text,fontSize:18,fontWeight:700}}>
@@ -583,7 +626,6 @@ export default function App() {
       const r=await fetch('/api/lanes')
       const j=await r.json()
       setUpdatedAt(j.fetchedAt)
-      // Merge live alerts with manual fallbacks — isolated, no side effects
       const merged = mergeAlerts(j.alerts || [], getActiveManualAlerts())
       setAlerts(merged)
       if(j.success) showToast('Lane data refreshed from CCC ✓')
@@ -627,7 +669,6 @@ export default function App() {
 
       <div style={{padding:'0 16px 100px'}}>
 
-        {/* ── ALERT BANNER — slots in here, invisible when empty ── */}
         <div style={{marginTop:4}}>
           <AlertBanner alerts={alerts} />
         </div>
@@ -682,6 +723,8 @@ export default function App() {
             {filtered.map((p)=>(
               <PoolRow key={p.id} pool={p} rank={ranked.indexOf(p)}
                 selected={detailPool?.id===p.id}
+                date={date}
+                period={period}
                 onSelect={()=>setDetailPool(detailPool?.id===p.id?null:p)}/>
             ))}
           </div>
