@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 /**
  * scrape.js — CCC Lane Availability Scraper (ES Module)
- * Runs in GitHub Actions via Puppeteer.
+ * Updates OTHER pools (graham, matatiki, pioneer, taiora, linwood)
+ * Parakiore uses hardcoded per-day PAR data — NOT overwritten by scraper
  */
 
 import puppeteer from 'puppeteer'
-import { writeFileSync } from 'fs'
+import { writeFileSync, readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const DATA_PATH = join(__dirname, '..', 'src', 'data.js')
 
 // ── Time slot definitions ─────────────────────────────────────────────────────
 const TIME_SLOTS = [
@@ -57,6 +59,16 @@ function parseCell(val) {
   return isNaN(n) ? null : n
 }
 
+// ── Defaults (fallback if scrape fails for a pool) ────────────────────────────
+const DEFAULTS = {
+  graham:   { wd:[8,7,7,6,6,7,4,5,7,5,6,6,6,6,6,4,5,6,6,5,4,2,2,2,2,3,5,5,5,6,8],   we:[null,null,null,8,8,5,4,3,3,4,4,4,5,3,5,5,5,5,5,6,6,6,6,8,8,6,6,8,8,null,null] },
+  matatiki: { wd:[8,8,8,8,8,7,7,6,6,8,8,8,8,8,8,8,8,8,8,6,5,5,4,3,3,3,3,5,6,6,7],   we:[null,null,null,6,6,6,5,4,5,5,4,4,5,5,5,6,6,6,5,5,4,3,3,3,3,5,6,6,6,null,null] },
+  jellie:   { wd:[null,2,2,3,4,null,5,5,6,7,7,6,6,6,6,5,5,6,6,5,4,3,3,3,4,3,2,4,4,null,null], we:[null,null,null,null,3,3,3,4,5,6,5,5,4,4,4,4,4,4,3,3,2,2,null,null,null,null,null,null,null,null,null] },
+  pioneer:  { wd:[5,5,5,5,5,5,5,2,2,3,3,3,3,3,3,3,5,5,5,5,3,3,3,3,3,3,4,2,3,5,5],   we:[null,null,null,5,5,5,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,null,null] },
+  taiora:   { wd:[8,8,8,8,10,9,7,7,10,10,10,10,10,10,10,10,10,9,9,8,7,6,6,3,3,3,5,4,4,4,4], we:[null,null,null,8,8,8,8,9,4,4,4,4,4,5,5,5,0,0,5,5,5,3,3,3,3,2,7,7,7,null,null] },
+  linwood:  { wd:[6,6,6,6,6,6,5,5,6,6,6,6,5,6,4,4,4,4,6,4,4,4,4,4,4,4,4,5,5,6,6],   we:[null,null,null,6,6,5,5,5,5,5,5,5,5,2,2,2,2,2,2,4,4,4,4,6,5,5,5,6,6,null,null] },
+}
+
 // ── Scrape ────────────────────────────────────────────────────────────────────
 async function scrape() {
   console.log('Launching browser...')
@@ -78,7 +90,6 @@ async function scrape() {
   await page.waitForSelector('table.js-make-table-scrollable', { timeout: 20000 })
   await new Promise(r => setTimeout(r, 2000))
 
-  // Get pool names and table counts per accordion
   const poolSections = await page.evaluate(() => {
     return [...document.querySelectorAll('.c-accordion-alt')].map(acc => {
       const h = acc.querySelector('[class*="heading"]')
@@ -87,9 +98,8 @@ async function scrape() {
       return { name, tableCount }
     })
   })
-  console.log('Pool sections:', poolSections)
+  console.log('Pool sections:', JSON.stringify(poolSections))
 
-  // Extract all table data
   const rawTables = await page.evaluate(() => {
     return [...document.querySelectorAll('table.js-make-table-scrollable')].map(t => {
       return [...t.querySelectorAll('tr')].map(r =>
@@ -101,7 +111,7 @@ async function scrape() {
   })
 
   await browser.close()
-  console.log(`Got ${rawTables.length} tables across ${poolSections.length} pools`)
+  console.log(`Got ${rawTables.length} tables`)
 
   // ── Map tables to pools ───────────────────────────────────────────────────
   const poolTableMap = {}
@@ -113,24 +123,29 @@ async function scrape() {
     if (name.includes('graham')) poolId = 'graham'
     else if (name.includes('jellie')) poolId = 'jellie'
     else if (name.includes('matatiki') || name.includes('hornby')) poolId = 'matatiki'
-    else if (name.includes('parakiore')) poolId = 'parakiore'
+    else if (name.includes('parakiore')) poolId = 'parakiore' // map but skip below
     else if (name.includes('pioneer')) poolId = 'pioneer'
     else if (name.includes('taiora') || name.includes('qeii')) poolId = 'taiora'
     else if (name.includes('linwood') || name.includes('te pou')) poolId = 'linwood'
 
     if (poolId && tableCount > 0) {
       poolTableMap[poolId] = rawTables.slice(tableIdx, tableIdx + tableCount)
-      console.log(`${poolId}: tables ${tableIdx}–${tableIdx + tableCount - 1}`)
+      console.log(`${poolId}: ${tableCount} tables`)
     }
     tableIdx += tableCount
   }
 
-  // ── Parse slot data ───────────────────────────────────────────────────────
+  // ── Parse slot data — skip Parakiore ─────────────────────────────────────
   const result = {}
+  const SKIP = ['parakiore'] // PAR is hardcoded per-day, never overwrite
 
   for (const [poolId, tables] of Object.entries(poolTableMap)) {
-    const slotData = []
+    if (SKIP.includes(poolId)) {
+      console.log(`Skipping ${poolId} — using hardcoded per-day data`)
+      continue
+    }
 
+    const slotData = []
     for (const table of tables) {
       if (!table.length) continue
       const headerRow = table[0]
@@ -141,7 +156,6 @@ async function scrape() {
         if (!row.length) continue
         const hour = parseTimeLabel(row[0])
         if (hour === null) continue
-
         dayCols.forEach((dow, ci) => {
           if (dow === null) return
           const lanes = parseCell(row[ci + 1] || '')
@@ -150,10 +164,15 @@ async function scrape() {
       }
     }
 
+    if (!slotData.length) {
+      console.log(`No data for ${poolId} — using defaults`)
+      result[poolId] = DEFAULTS[poolId]
+      continue
+    }
+
     // Average per dow per slot
     const dowSlots = {}
     for (let d = 0; d <= 6; d++) dowSlots[d] = {}
-
     slotData.forEach(({ hour, dow, lanes }) => {
       if (!dowSlots[dow][hour]) dowSlots[dow][hour] = []
       dowSlots[dow][hour].push(lanes)
@@ -176,57 +195,31 @@ async function scrape() {
       wd: buildArray([1,2,3,4,5]),
       we: buildArray([0,6]),
     }
-    console.log(`${poolId} wd sample:`, result[poolId].wd.slice(0,6))
+    console.log(`${poolId} wd[0-5]:`, result[poolId].wd.slice(0,6))
+  }
+
+  // Fill any missing pools with defaults
+  for (const poolId of Object.keys(DEFAULTS)) {
+    if (!result[poolId]) {
+      console.log(`${poolId} missing — using defaults`)
+      result[poolId] = DEFAULTS[poolId]
+    }
   }
 
   return result
 }
 
-// ── Defaults ──────────────────────────────────────────────────────────────────
-function getDefault(pool, type) {
-  const d = {
-    graham:   { wd:[8,7,7,6,6,7,4,5,7,5,6,6,6,6,6,4,5,6,6,5,4,2,2,2,2,3,5,5,5,6,8], we:[null,null,null,8,8,5,4,3,3,4,4,4,5,3,5,5,5,5,5,6,6,6,6,8,8,6,6,8,8,null,null] },
-    matatiki: { wd:[8,8,8,8,8,7,7,6,6,8,8,8,8,8,8,8,8,8,8,6,5,5,4,3,3,3,3,5,6,6,7], we:[null,null,null,6,6,6,5,4,5,5,4,4,5,5,5,6,6,6,5,5,4,3,3,3,3,5,6,6,6,null,null] },
-    jellie:   { wd:[null,2,2,3,4,null,5,5,6,7,7,6,6,6,6,5,5,6,6,5,4,3,3,3,4,3,2,4,4,null,null], we:[null,null,null,null,3,3,3,4,5,6,5,5,4,4,4,4,4,4,3,3,2,2,null,null,null,null,null,null,null,null,null] },
-    pioneer:  { wd:[5,5,5,5,5,5,5,2,2,3,3,3,3,3,3,3,5,5,5,5,3,3,3,3,3,3,4,2,3,5,5], we:[null,null,null,5,5,5,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,null,null] },
-    taiora:   { wd:[8,8,8,8,10,9,7,7,10,10,10,10,10,10,10,10,10,9,9,8,7,6,6,3,3,3,5,4,4,4,4], we:[null,null,null,8,8,8,8,9,4,4,4,4,4,5,5,5,0,0,5,5,5,3,3,3,3,2,7,7,7,null,null] },
-    linwood:  { wd:[6,6,6,6,6,6,5,5,6,6,6,6,5,6,4,4,4,4,6,4,4,4,4,4,4,4,4,5,5,6,6], we:[null,null,null,6,6,5,5,5,5,5,5,5,5,2,2,2,2,2,2,4,4,4,4,6,5,5,5,6,6,null,null] },
-  }
-  return d[pool]?.[type] || Array(31).fill(null)
-}
-
-function getDefaultPar() {
-  return {
-    1:[8,6,4,4,8,null,20,20,20,20,20,20,20,20,20,20,20,20,20,20,17,6,6,6,9,9,7,12,14,14,17],
-    2:[6,4,4,4,8,10,10,10,10,10,10,10,10,10,10,10,null,20,20,20,20,12,9,9,9,7,1,7,7,7,7],
-    3:[10,6,6,6,10,null,20,20,20,20,20,20,20,20,20,20,20,20,20,20,17,9,9,9,7,7,3,7,7,7,10],
-    4:[4,4,4,4,7,9,9,10,10,10,10,10,10,10,10,10,null,20,20,20,20,12,9,9,9,9,2,10,10,10,10],
-    5:[8,4,4,4,10,null,20,20,20,20,20,20,20,20,20,17,20,20,20,20,20,9,9,6,12,2,6,6,6,6,6],
-    6:[null,null,null,8,8,6,6,10,10,10,8,8,8,8,8,8,8,8,8,8,6,4,4,4,6,8,6,8,8,null,null],
-    0:[null,null,null,null,null,null,8,10,10,10,8,8,8,8,8,8,8,8,8,6,6,4,4,4,6,6,4,6,null,null,null],
-  }
-}
-
 // ── Generate data.js ──────────────────────────────────────────────────────────
 function generateDataJs(scraped, scrapedAt) {
-  const par = scraped.parakiore ? {
-    0: scraped.parakiore.we || getDefaultPar()[0],
-    1: scraped.parakiore.wd || getDefaultPar()[1],
-    2: scraped.parakiore.wd || getDefaultPar()[2],
-    3: scraped.parakiore.wd || getDefaultPar()[3],
-    4: scraped.parakiore.wd || getDefaultPar()[4],
-    5: scraped.parakiore.wd || getDefaultPar()[5],
-    6: scraped.parakiore.we || getDefaultPar()[6],
-  } : getDefaultPar()
-
-  const g = scraped.graham   || {}
-  const m = scraped.matatiki || {}
-  const p = scraped.pioneer  || {}
-  const t = scraped.taiora   || {}
-  const l = scraped.linwood  || {}
+  const g = scraped.graham
+  const m = scraped.matatiki
+  const p = scraped.pioneer
+  const t = scraped.taiora
+  const l = scraped.linwood
 
   return `// AUTO-GENERATED by scripts/scrape.js — do not edit manually
 // Last scraped: ${scrapedAt}
+// PAR (Parakiore) is hardcoded per-day-of-week — not overwritten by scraper
 
 export const POOLS = [
   { id:'parakiore', name:'Parakiore',          shortName:'Parakiore',   subtitle:'Te Puna o Whakaōho · Nga Puna Wai', maxLanes:20, color:'#7ecac3', url:'https://recandsport.ccc.govt.nz/parakiore/',                        features:['50m pool','25m pool','Hydroslides','Gym'],    tip:'Largest pool in Christchurch. 20 lanes mid-morning on weekdays.' },
@@ -260,7 +253,17 @@ export const TIME_SLOTS = [
   {label:'7:30pm',hour:19.5},{label:'8:00pm',hour:20},{label:'8:30pm',hour:20.5},
 ]
 
-const PAR = ${JSON.stringify(par, null, 2)}
+// Parakiore: hardcoded per-day-of-week — verified from CCC (0=Sun)
+// 50m mode Mon/Wed/Fri, 25m mode Tue/Thu, varies Sat/Sun
+const PAR = {
+  1:[8,6,4,4,8,null,20,20,20,20,20,20,20,20,20,20,20,20,20,20,17,6,6,6,9,9,7,12,14,14,17],
+  2:[6,4,4,4,8,10,10,10,10,10,10,10,10,10,10,10,null,20,20,20,20,12,9,9,9,7,1,7,7,7,7],
+  3:[10,6,6,6,10,null,20,20,20,20,20,20,20,20,20,20,20,20,20,20,17,9,9,9,7,7,3,7,7,7,10],
+  4:[4,4,4,4,7,9,9,10,10,10,10,10,10,10,10,10,null,20,20,20,20,12,9,9,9,9,2,10,10,10,10],
+  5:[8,4,4,4,10,null,20,20,20,20,20,20,20,20,20,17,20,20,20,20,20,9,9,6,12,2,6,6,6,6,6],
+  6:[null,null,null,8,8,6,6,10,10,10,8,8,8,8,8,8,8,8,8,8,6,4,4,4,6,8,6,8,8,null,null],
+  0:[null,null,null,null,null,null,8,10,10,10,8,8,8,8,8,8,8,8,8,6,6,4,4,4,6,6,4,6,null,null,null],
+}
 
 const LYT_OPEN = {
   1:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
@@ -272,13 +275,14 @@ const LYT_OPEN = {
   0:[null,null,null,null,null,null,null,null,2,3,3,4,4,4,3,3,3,3,2,2,2,null,null,null,null,null,null,null,null,null,null],
 }
 
+// Auto-scraped weekly from CCC lane availability page
 const OTHER = {
-  graham:   { wd: ${JSON.stringify(g.wd || getDefault('graham','wd'))},   we: ${JSON.stringify(g.we || getDefault('graham','we'))} },
-  matatiki: { wd: ${JSON.stringify(m.wd || getDefault('matatiki','wd'))}, we: ${JSON.stringify(m.we || getDefault('matatiki','we'))} },
-  jellie:   { wd: ${JSON.stringify(getDefault('jellie','wd'))},            we: ${JSON.stringify(getDefault('jellie','we'))} },
-  pioneer:  { wd: ${JSON.stringify(p.wd || getDefault('pioneer','wd'))},  we: ${JSON.stringify(p.we || getDefault('pioneer','we'))} },
-  taiora:   { wd: ${JSON.stringify(t.wd || getDefault('taiora','wd'))},   we: ${JSON.stringify(t.we || getDefault('taiora','we'))} },
-  linwood:  { wd: ${JSON.stringify(l.wd || getDefault('linwood','wd'))},  we: ${JSON.stringify(l.we || getDefault('linwood','we'))} },
+  graham:   { wd: ${JSON.stringify(g.wd)},   we: ${JSON.stringify(g.we)} },
+  matatiki: { wd: ${JSON.stringify(m.wd)}, we: ${JSON.stringify(m.we)} },
+  jellie:   { wd: ${JSON.stringify(DEFAULTS.jellie.wd)},            we: ${JSON.stringify(DEFAULTS.jellie.we)} },
+  pioneer:  { wd: ${JSON.stringify(p.wd)},  we: ${JSON.stringify(p.we)} },
+  taiora:   { wd: ${JSON.stringify(t.wd)},   we: ${JSON.stringify(t.we)} },
+  linwood:  { wd: ${JSON.stringify(l.wd)},  we: ${JSON.stringify(l.we)} },
 }
 
 export function isLytteltonOpen(date) {
@@ -347,14 +351,13 @@ try {
   console.log(`\nScraped ${poolsFound} pools:`, Object.keys(scraped))
 
   if (poolsFound === 0) {
-    console.error('ERROR: No pools scraped — aborting')
+    console.error('ERROR: No pools scraped — aborting to preserve existing data')
     process.exit(1)
   }
 
   const dataJs = generateDataJs(scraped, scrapedAt)
-  const outPath = join(__dirname, '..', 'src', 'data.js')
-  writeFileSync(outPath, dataJs, 'utf8')
-  console.log(`✓ Written to ${outPath}`)
+  writeFileSync(DATA_PATH, dataJs, 'utf8')
+  console.log(`✓ Written to ${DATA_PATH}`)
   console.log(`✓ Scraped at ${scrapedAt}`)
 } catch (err) {
   console.error('Scrape failed:', err)
