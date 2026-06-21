@@ -2,7 +2,6 @@ name: Scrape CCC Lane Availability
 
 on:
   schedule:
-    # Every Monday at 7am NZT (Sunday 6pm UTC)
     - cron: '0 18 * * 0'
   workflow_dispatch:
 
@@ -21,8 +20,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: swim-lanes-chch/swim-lanes-chch/package-lock.json
 
       - name: Install dependencies
         working-directory: swim-lanes-chch/swim-lanes-chch
