@@ -17,14 +17,13 @@ export const POOLS = [
     features:['25m outdoor pool','Harbour views','Summer only'],
     tip:'Stunning outdoor pool overlooking Lyttelton Harbour. Open November to March only.',
     seasonal: true,
-    seasonStart: 11, // November
-    seasonEnd: 3,    // March
+    seasonStart: 11,
+    seasonEnd: 3,
     closedMessage: 'Closed for winter — reopens November',
     openMessage: 'Open now! Summer pool season',
   },
 ]
 
-// Which pools are year-round (shown in rankings)
 export const LANE_POOLS = POOLS.filter(p => !p.seasonal)
 
 export const TIME_PERIODS = [
@@ -45,8 +44,9 @@ export const TIME_SLOTS = [
   {label:'6:00pm',hour:18},{label:'6:30pm',hour:18.5},{label:'7:00pm',hour:19},
   {label:'7:30pm',hour:19.5},{label:'8:00pm',hour:20},{label:'8:30pm',hour:20.5},
 ]
+// 31 slots total, indices 0–30
 
-// Parakiore: real scraped data by day-of-week (0=Sun)
+// ── Parakiore: scraped per day-of-week (0=Sun) ────────────────────────────────
 const PAR = {
   1:[8,6,4,4,8,null,20,20,20,20,20,20,20,20,20,20,20,20,20,20,17,6,6,6,9,9,7,12,14,14,17],
   2:[6,4,4,4,8,10,10,10,10,10,10,10,10,10,10,10,null,20,20,20,20,12,9,9,9,7,1,7,7,7,7],
@@ -57,7 +57,7 @@ const PAR = {
   0:[null,null,null,null,null,null,8,10,10,10,8,8,8,8,8,8,8,8,8,6,6,4,4,4,6,6,4,6,null,null,null],
 }
 
-// Lyttelton summer pattern (when open)
+// ── Lyttelton summer pattern ──────────────────────────────────────────────────
 const LYT_OPEN = {
   1:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
   2:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
@@ -68,18 +68,39 @@ const LYT_OPEN = {
   0:[null,null,null,null,null,null,null,null,2,3,3,4,4,4,3,3,3,3,2,2,2,null,null,null,null,null,null,null,null,null,null],
 }
 
+// ── Real scraped data (CCC June 2025, averaged across two weeks) ──────────────
+// Weekday = Mon–Fri average | Weekend = Sat–Sun average
+// null = pool closed at that slot | 0 = no lanes available (learn-to-swim etc)
 const OTHER = {
-  graham:   { wd:[null,null,2,3,4,5,5,6,6,7,7,7,7,7,7,6,5,6,6,6,5,3,3,3,4,4,2,4,4,null,null],   we:[null,null,null,null,4,4,4,5,5,6,6,5,5,4,4,4,4,4,3,3,2,2,null,null,null,null,null,null,null,null,null] },
-  jellie:   { wd:[null,2,2,3,4,null,5,6,6,7,7,7,6,6,6,6,5,6,6,5,4,3,3,3,4,3,2,4,4,null,null],   we:[null,null,null,null,3,3,3,4,5,6,5,5,4,4,4,4,3,4,4,3,3,2,null,null,null,null,null,null,null,null,null] },
-  matatiki: { wd:[null,null,2,3,4,5,5,6,7,7,7,7,7,7,7,6,5,6,6,6,5,3,3,3,4,4,2,5,5,5,null],     we:[null,null,null,null,3,3,3,5,5,6,6,5,5,5,4,4,4,4,4,3,3,2,null,null,null,null,null,null,null,null,null] },
-  taiora:   { wd:[null,2,3,4,5,null,7,8,8,9,9,9,8,8,8,8,6,8,8,7,6,4,4,4,5,5,3,6,6,6,null],     we:[null,null,null,null,5,5,5,6,7,8,8,7,7,6,6,6,5,6,6,5,4,3,null,null,null,null,null,null,null,null,null] },
-  pioneer:  { wd:[null,null,2,2,3,4,4,5,5,5,5,5,4,4,4,4,4,4,4,4,3,2,2,2,3,3,2,3,3,null,null],  we:[null,null,null,null,null,2,2,3,4,4,4,4,3,3,3,3,3,3,2,2,2,null,null,null,null,null,null,null,null,null,null] },
-  linwood:  { wd:[null,null,null,2,3,3,3,4,4,5,5,5,4,4,4,4,3,4,4,4,3,2,2,2,2,3,2,3,3,null,null], we:[null,null,null,null,null,2,2,3,3,4,4,3,3,3,3,2,2,3,3,2,2,null,null,null,null,null,null,null,null,null,null] },
+  graham: {
+    wd: [8,7,7,6,6,7,4,5,7,5,6,6,6, 6,6,4,5,6,6,5,4,2,2, 2,2,3,5,5,5,6,8],
+    we: [null,null,null,8,8,5,4,3,3,4,4,4,5, 3,5,5,5,5,5,6,6,6,6, 8,8,6,6,8,8,null,null],
+  },
+  matatiki: {
+    wd: [8,8,8,8,8,7,7,6,6,8,8,8,8, 8,8,8,8,8,8,6,5,5,4, 3,3,3,3,5,6,6,7],
+    we: [null,null,null,6,6,6,5,4,5,5,4,4,5, 5,5,6,6,6,5,5,4,3,3, 3,3,5,6,6,6,null,null],
+  },
+  jellie: {
+    // Jellie had no published data this week — using conservative estimates
+    wd: [null,2,2,3,4,null,5,5,6,7,7,6,6, 6,6,5,5,6,6,5,4,3,3, 3,4,3,2,4,4,null,null],
+    we: [null,null,null,null,3,3,3,4,5,6,5,5,4, 4,4,4,4,4,3,3,2,2,null, null,null,null,null,null,null,null,null],
+  },
+  pioneer: {
+    wd: [5,5,5,5,5,5,5,2,2,3,3,3,3, 3,3,3,5,5,5,5,3,3,3, 3,3,3,4,2,3,5,5],
+    we: [null,null,null,5,5,5,4,4,4,4,4,4,4, 4,4,5,5,5,5,5,5,5,5, 5,5,5,5,5,5,null,null],
+  },
+  taiora: {
+    wd: [8,8,8,8,10,9,7,7,10,10,10,10,10, 10,10,10,10,9,9,8,7,6,6, 3,3,3,5,4,4,4,4],
+    we: [null,null,null,8,8,8,8,9,4,4,4,4,4, 5,5,5,0,0,5,5,5,3,3, 3,3,2,7,7,7,null,null],
+  },
+  linwood: {
+    wd: [6,6,6,6,6,6,5,5,6,6,6,6,5, 6,4,4,4,4,6,4,4,4,4, 4,4,4,4,5,5,6,6],
+    we: [null,null,null,6,6,5,5,5,5,5,5,5,5, 2,2,2,2,2,2,4,4,4,4, 6,5,5,5,6,6,null,null],
+  },
 }
 
-// Check if Lyttelton pool is in season for a given date
 export function isLytteltonOpen(date) {
-  const month = date.getMonth() + 1 // 1-12
+  const month = date.getMonth() + 1
   return month >= 11 || month <= 3
 }
 
@@ -88,7 +109,7 @@ export function getLanesForPool(poolId, date) {
   const isWE = dow === 0 || dow === 6
   if (poolId === 'parakiore') return PAR[dow] || PAR[1]
   if (poolId === 'lyttelton') {
-    if (!isLytteltonOpen(date)) return TIME_SLOTS.map(() => 0) // closed
+    if (!isLytteltonOpen(date)) return TIME_SLOTS.map(() => 0)
     return LYT_OPEN[dow] || LYT_OPEN[1]
   }
   const p = OTHER[poolId]
@@ -106,7 +127,6 @@ export function getAvgForPeriod(poolId, date, period) {
 }
 
 export function rankPools(date, period) {
-  // Only rank year-round pools
   return LANE_POOLS.map(p => {
     const avg = getAvgForPeriod(p.id, date, period)
     const score = avg / p.maxLanes
