@@ -1,6 +1,7 @@
 {
   "name": "swim-lanes-chch",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +14,6 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.0.0"
+    "vite": "^5.0.8"
   }
 }

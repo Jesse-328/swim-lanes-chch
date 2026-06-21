@@ -2,21 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/wave.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0d1b2a" />
-    <meta name="description" content="Find the quietest swim lanes in Christchurch — updated live from CCC Rec & Sport." />
+    <meta name="description" content="Find the quietest swim lanes across Christchurch pools." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Swim Lanes" />
-    <link rel="apple-touch-icon" href="/wave.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet" />
     <title>Swim Lanes Ōtautahi</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      html { font-size: 16px; }
       body {
         background: #0d1b2a;
         color: #f5ede0;
@@ -24,39 +21,30 @@
         min-height: 100vh;
         -webkit-font-smoothing: antialiased;
       }
-      #root { min-height: 100vh; }
-
       @keyframes ripple {
-        0% { transform: scale(0.8); opacity: 0.8; }
-        100% { transform: scale(2.4); opacity: 0; }
+        0%   { transform: scale(0.8); opacity: 0.7; }
+        100% { transform: scale(2.6); opacity: 0; }
       }
       @keyframes fadeUp {
-        from { opacity: 0; transform: translateY(16px); }
-        to { opacity: 1; transform: translateY(0); }
+        from { opacity: 0; transform: translateY(14px); }
+        to   { opacity: 1; transform: translateY(0); }
       }
       @keyframes shimmer {
-        0% { background-position: -200% center; }
-        100% { background-position: 200% center; }
+        0%   { background-position: -200% center; }
+        100% { background-position:  200% center; }
       }
-      @keyframes pulse-glow {
-        0%, 100% { box-shadow: 0 0 20px rgba(126,202,195,0.15); }
-        50% { box-shadow: 0 0 40px rgba(126,202,195,0.35); }
+      @keyframes pulseGlow {
+        0%, 100% { box-shadow: 0 0 24px rgba(126,202,195,0.10); }
+        50%       { box-shadow: 0 0 42px rgba(126,202,195,0.28); }
       }
       @keyframes spin {
         from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
+        to   { transform: rotate(360deg); }
       }
-      @keyframes wave-bg {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-      }
-
-      .fade-up { animation: fadeUp 0.4s ease forwards; }
-      .spinning { animation: spin 1s linear infinite; }
-
-      ::-webkit-scrollbar { width: 4px; }
-      ::-webkit-scrollbar-track { background: #0d1b2a; }
+      .fade-up  { animation: fadeUp 0.35s ease forwards; }
+      .spinning { animation: spin 0.9s linear infinite; display: inline-block; }
+      ::-webkit-scrollbar { width: 3px; height: 3px; }
+      ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #2a4a5e; border-radius: 4px; }
     </style>
   </head>
