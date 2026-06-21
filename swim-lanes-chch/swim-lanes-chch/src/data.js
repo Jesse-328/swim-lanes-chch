@@ -6,7 +6,26 @@ export const POOLS = [
   { id:'jellie',    name:'Jellie Park',         shortName:'Jellie Park', subtitle:'Fendalton · Ilam Rd',                maxLanes:8,  color:'#c4a882', url:'https://recandsport.ccc.govt.nz/jellie-park/',                     features:['25m pool','Outdoor pool','Hydroslide','Spa'], tip:'Outdoor lanes are a bonus in good weather.' },
   { id:'pioneer',   name:'Pioneer',             shortName:'Pioneer',     subtitle:'Spreydon · Colombo St',              maxLanes:6,  color:'#8fada0', url:'https://recandsport.ccc.govt.nz/pioneer/',                         features:['25m pool','Spa','Sauna'],                      tip:'Small, community feel. Good for quiet early mornings.' },
   { id:'linwood',   name:'Te Pou Toetoe',       shortName:'Linwood',     subtitle:'Linwood · Linwood Ave',              maxLanes:6,  color:'#d4a0b0', url:'https://recandsport.ccc.govt.nz/te-pou-toetoe-linwood-pool/',      features:['25m pool','Learner pool'],                     tip:'Neighbourhood pool, very quiet on weekday afternoons.' },
+  {
+    id:'lyttelton',
+    name:'Norman Kirk Memorial',
+    shortName:'Lyttelton',
+    subtitle:'Lyttelton · Summer pool',
+    maxLanes:4,
+    color:'#7eb8d4',
+    url:'https://recandsport.ccc.govt.nz/norman-kirk-memorial-summer-pool/',
+    features:['25m outdoor pool','Harbour views','Summer only'],
+    tip:'Stunning outdoor pool overlooking Lyttelton Harbour. Open November to March only.',
+    seasonal: true,
+    seasonStart: 11, // November
+    seasonEnd: 3,    // March
+    closedMessage: 'Closed for winter — reopens November',
+    openMessage: 'Open now! Summer pool season',
+  },
 ]
+
+// Which pools are year-round (shown in rankings)
+export const LANE_POOLS = POOLS.filter(p => !p.seasonal)
 
 export const TIME_PERIODS = [
   { id:'early',     label:'Early bird', sublabel:'5:30–8am',   icon:'🌅', hourStart:5,  hourEnd:8  },
@@ -37,7 +56,18 @@ const PAR = {
   6:[null,null,null,8,8,6,6,10,10,10,8,8,8,8,8,8,8,8,8,8,6,4,4,4,6,8,6,8,8,null,null],
   0:[null,null,null,null,null,null,8,10,10,10,8,8,8,8,8,8,8,8,8,6,6,4,4,4,6,6,4,6,null,null,null],
 }
-// Other pools: estimated weekly patterns (weekday / weekend), scaled to maxLanes
+
+// Lyttelton summer pattern (when open)
+const LYT_OPEN = {
+  1:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
+  2:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
+  3:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
+  4:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
+  5:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
+  6:[null,null,null,null,null,null,null,null,2,3,3,4,4,4,3,3,3,3,2,2,2,null,null,null,null,null,null,null,null,null,null],
+  0:[null,null,null,null,null,null,null,null,2,3,3,4,4,4,3,3,3,3,2,2,2,null,null,null,null,null,null,null,null,null,null],
+}
+
 const OTHER = {
   graham:   { wd:[null,null,2,3,4,5,5,6,6,7,7,7,7,7,7,6,5,6,6,6,5,3,3,3,4,4,2,4,4,null,null],   we:[null,null,null,null,4,4,4,5,5,6,6,5,5,4,4,4,4,4,3,3,2,2,null,null,null,null,null,null,null,null,null] },
   jellie:   { wd:[null,2,2,3,4,null,5,6,6,7,7,7,6,6,6,6,5,6,6,5,4,3,3,3,4,3,2,4,4,null,null],   we:[null,null,null,null,3,3,3,4,5,6,5,5,4,4,4,4,3,4,4,3,3,2,null,null,null,null,null,null,null,null,null] },
@@ -47,10 +77,20 @@ const OTHER = {
   linwood:  { wd:[null,null,null,2,3,3,3,4,4,5,5,5,4,4,4,4,3,4,4,4,3,2,2,2,2,3,2,3,3,null,null], we:[null,null,null,null,null,2,2,3,3,4,4,3,3,3,3,2,2,3,3,2,2,null,null,null,null,null,null,null,null,null,null] },
 }
 
+// Check if Lyttelton pool is in season for a given date
+export function isLytteltonOpen(date) {
+  const month = date.getMonth() + 1 // 1-12
+  return month >= 11 || month <= 3
+}
+
 export function getLanesForPool(poolId, date) {
   const dow = date.getDay()
   const isWE = dow === 0 || dow === 6
   if (poolId === 'parakiore') return PAR[dow] || PAR[1]
+  if (poolId === 'lyttelton') {
+    if (!isLytteltonOpen(date)) return TIME_SLOTS.map(() => 0) // closed
+    return LYT_OPEN[dow] || LYT_OPEN[1]
+  }
   const p = OTHER[poolId]
   if (!p) return TIME_SLOTS.map(() => null)
   return isWE ? p.we : p.wd
@@ -60,13 +100,14 @@ export function getAvgForPeriod(poolId, date, period) {
   const lanes = getLanesForPool(poolId, date)
   const vals = TIME_SLOTS
     .map((t, i) => t.hour >= period.hourStart && t.hour < period.hourEnd ? lanes[i] : null)
-    .filter(v => v !== null && v !== undefined)
+    .filter(v => v !== null && v !== undefined && v > 0)
   if (!vals.length) return 0
   return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length * 10) / 10
 }
 
 export function rankPools(date, period) {
-  return POOLS.map(p => {
+  // Only rank year-round pools
+  return LANE_POOLS.map(p => {
     const avg = getAvgForPeriod(p.id, date, period)
     const score = avg / p.maxLanes
     return { ...p, avg, score }
