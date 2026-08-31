@@ -1,365 +1,191 @@
 #!/usr/bin/env node
 /**
- * scrape.js — CCC Lane Availability Scraper (ES Module)
- * Updates OTHER pools (graham, matatiki, pioneer, taiora, linwood)
- * Parakiore uses hardcoded per-day PAR data — NOT overwritten by scraper
+ * scrape.js — CCC Lane Availability Scraper
+ *
+ * Reads https://recandsport.ccc.govt.nz/swim/lane-availability/ with Puppeteer
+ * and writes src/lanes.json: lanes open to the public per 30-min slot, per
+ * day-of-week (0=Sun … 6=Sat), for every pool it can find.
+ *
+ * Pools that can't be parsed keep whatever is already in lanes.json.
+ * Pool names, tips, colours etc. live in src/data.js and are never touched here.
  */
 
 import puppeteer from 'puppeteer'
-import { writeFileSync, readFileSync } from 'fs'
+import { writeFileSync, readFileSync, existsSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const DATA_PATH = join(__dirname, '..', 'src', 'data.js')
+const OUT_PATH = join(__dirname, '..', 'src', 'lanes.json')
+const CCC_URL = 'https://recandsport.ccc.govt.nz/swim/lane-availability/'
 
-// ── Time slot definitions ─────────────────────────────────────────────────────
-const TIME_SLOTS = [
-  {label:'5:30am',hour:5.5},{label:'6:00am',hour:6},{label:'6:30am',hour:6.5},
-  {label:'7:00am',hour:7},{label:'7:30am',hour:7.5},{label:'8:00am',hour:8},
-  {label:'8:30am',hour:8.5},{label:'9:00am',hour:9},{label:'9:30am',hour:9.5},
-  {label:'10:00am',hour:10},{label:'10:30am',hour:10.5},{label:'11:00am',hour:11},{label:'11:30am',hour:11.5},
-  {label:'12:00pm',hour:12},{label:'12:30pm',hour:12.5},{label:'1:00pm',hour:13},{label:'1:30pm',hour:13.5},
-  {label:'2:00pm',hour:14},{label:'2:30pm',hour:14.5},{label:'3:00pm',hour:15},{label:'3:30pm',hour:15.5},
-  {label:'4:00pm',hour:16},{label:'4:30pm',hour:16.5},{label:'5:00pm',hour:17},{label:'5:30pm',hour:17.5},
-  {label:'6:00pm',hour:18},{label:'6:30pm',hour:18.5},{label:'7:00pm',hour:19},
-  {label:'7:30pm',hour:19.5},{label:'8:00pm',hour:20},{label:'8:30pm',hour:20.5},
+// ── Time slots (must match src/data.js) ──────────────────────────────────────
+const SLOT_HOURS = [
+  5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 11, 11.5,
+  12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 16.5, 17, 17.5,
+  18, 18.5, 19, 19.5, 20, 20.5,
 ]
 
-function parseDayHeader(header) {
-  const m = header.replace(/\n/g,'').match(/^(Mon|Tue|Wed|Thu|Thur|Fri|Sat|Sun)/i)
-  if (!m) return null
-  const d = m[1].toLowerCase()
-  if (d === 'sun') return 0
-  if (d === 'mon') return 1
-  if (d === 'tue') return 2
-  if (d === 'wed') return 3
-  if (d === 'thu' || d === 'thur') return 4
-  if (d === 'fri') return 5
-  if (d === 'sat') return 6
-  return null
+// ── Pool name → id ────────────────────────────────────────────────────────────
+const POOL_MATCHERS = [
+  ['parakiore', 'parakiore'],
+  ['graham',    'graham'],
+  ['jellie',    'jellie'],
+  ['matatiki',  'matatiki'], ['hornby', 'matatiki'],
+  ['pioneer',   'pioneer'],
+  ['taiora',    'taiora'],   ['qeii', 'taiora'],
+  ['linwood',   'linwood'],  ['te pou', 'linwood'],
+]
+function poolIdFromName(name) {
+  const n = name.toLowerCase()
+  const hit = POOL_MATCHERS.find(([needle]) => n.includes(needle))
+  return hit ? hit[1] : null
 }
 
-function parseTimeLabel(label) {
-  const m = label.replace(/\n/g,'').trim().match(/^(\d+)[\.:](\d+)(am|pm)$/i)
+// ── Cell parsers ──────────────────────────────────────────────────────────────
+
+// "Mon 31/8" → 1, "Sun" → 0, anything else → null
+function parseDayHeader(text) {
+  const m = text.replace(/\s+/g, ' ').trim().match(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)/i)
   if (!m) return null
-  let h = parseInt(m[1])
-  const mins = parseInt(m[2])
-  const ampm = m[3].toLowerCase()
-  if (ampm === 'pm' && h !== 12) h += 12
-  if (ampm === 'am' && h === 12) h = 0
+  return ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(m[1].toLowerCase().slice(0, 3))
+}
+
+// "5.30am" / "5:30am" / "12.00pm" → decimal hour, else null
+function parseTimeLabel(text) {
+  const m = text.replace(/\s+/g, '').match(/^(\d{1,2})[.:](\d{2})(am|pm)$/i)
+  if (!m) return null
+  let h = parseInt(m[1], 10)
+  const mins = parseInt(m[2], 10)
+  const pm = m[3].toLowerCase() === 'pm'
+  if (pm && h !== 12) h += 12
+  if (!pm && h === 12) h = 0
   return h + (mins >= 30 ? 0.5 : 0)
 }
 
-function parseCell(val) {
-  if (!val || val === '-' || val === '') return null
-  const cleaned = val.replace(/\*\*/g,'').replace(/&nbsp;/g,'').replace(/[^\d]/g,'').trim()
-  if (!cleaned) return null
-  const n = parseInt(cleaned)
-  return isNaN(n) ? null : n
-}
-
-// ── Defaults (fallback if scrape fails for a pool) ────────────────────────────
-const DEFAULTS = {
-  graham:   { wd:[8,7,7,6,6,7,4,5,7,5,6,6,6,6,6,4,5,6,6,5,4,2,2,2,2,3,5,5,5,6,8],   we:[null,null,null,8,8,5,4,3,3,4,4,4,5,3,5,5,5,5,5,6,6,6,6,8,8,6,6,8,8,null,null] },
-  matatiki: { wd:[8,8,8,8,8,7,7,6,6,8,8,8,8,8,8,8,8,8,8,6,5,5,4,3,3,3,3,5,6,6,7],   we:[null,null,null,6,6,6,5,4,5,5,4,4,5,5,5,6,6,6,5,5,4,3,3,3,3,5,6,6,6,null,null] },
-  jellie:   { wd:[null,2,2,3,4,null,5,5,6,7,7,6,6,6,6,5,5,6,6,5,4,3,3,3,4,3,2,4,4,null,null], we:[null,null,null,null,3,3,3,4,5,6,5,5,4,4,4,4,4,4,3,3,2,2,null,null,null,null,null,null,null,null,null] },
-  pioneer:  { wd:[5,5,5,5,5,5,5,2,2,3,3,3,3,3,3,3,5,5,5,5,3,3,3,3,3,3,4,2,3,5,5],   we:[null,null,null,5,5,5,4,4,4,4,4,4,4,4,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,null,null] },
-  taiora:   { wd:[8,8,8,8,10,9,7,7,10,10,10,10,10,10,10,10,10,9,9,8,7,6,6,3,3,3,5,4,4,4,4], we:[null,null,null,8,8,8,8,9,4,4,4,4,4,5,5,5,0,0,5,5,5,3,3,3,3,2,7,7,7,null,null] },
-  linwood:  { wd:[6,6,6,6,6,6,5,5,6,6,6,6,5,6,4,4,4,4,6,4,4,4,4,4,4,4,4,5,5,6,6],   we:[null,null,null,6,6,5,5,5,5,5,5,5,5,2,2,2,2,2,2,4,4,4,4,6,5,5,5,6,6,null,null] },
+// A lane count is a bare integer, optionally bolded ("**12**").
+// Anything else — "-", "T", "25m", "8:15am", "" — is not a lane count → null.
+function parseLaneCell(text) {
+  const t = text.replace(/\*/g, '').replace(/\u00a0/g, ' ').trim()
+  if (!/^\d{1,2}$/.test(t)) return null
+  return parseInt(t, 10)
 }
 
 // ── Scrape ────────────────────────────────────────────────────────────────────
-async function scrape() {
-  console.log('Launching browser...')
+async function fetchSections() {
+  console.log('Launching browser…')
   const browser = await puppeteer.launch({
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     headless: true,
   })
+  try {
+    const page = await browser.newPage()
+    await page.setUserAgent('Mozilla/5.0 (compatible; SwimLanesChch/1.1)')
+    console.log('Loading CCC page…')
+    await page.goto(CCC_URL, { waitUntil: 'networkidle2', timeout: 30000 })
+    await page.waitForSelector('table.js-make-table-scrollable', { timeout: 20000 })
+    await new Promise(r => setTimeout(r, 2000))
 
-  const page = await browser.newPage()
-  await page.setUserAgent('Mozilla/5.0 (compatible; SwimLanesChch/1.0)')
-
-  console.log('Loading CCC page...')
-  await page.goto('https://recandsport.ccc.govt.nz/swim/lane-availability/', {
-    waitUntil: 'networkidle2',
-    timeout: 30000,
-  })
-
-  console.log('Waiting for tables...')
-  await page.waitForSelector('table.js-make-table-scrollable', { timeout: 20000 })
-  await new Promise(r => setTimeout(r, 2000))
-
-  const poolSections = await page.evaluate(() => {
-    return [...document.querySelectorAll('.c-accordion-alt')].map(acc => {
-      const h = acc.querySelector('[class*="heading"]')
-      const name = h ? h.innerText.trim().toLowerCase() : ''
-      const tableCount = acc.querySelectorAll('table.js-make-table-scrollable').length
-      return { name, tableCount }
-    })
-  })
-  console.log('Pool sections:', JSON.stringify(poolSections))
-
-  const rawTables = await page.evaluate(() => {
-    return [...document.querySelectorAll('table.js-make-table-scrollable')].map(t => {
-      return [...t.querySelectorAll('tr')].map(r =>
-        [...r.querySelectorAll('td')].map(td =>
-          td.innerText.trim() || td.innerHTML.replace(/<[^>]+>/g,'').trim() || ''
-        )
-      )
-    })
-  })
-
-  await browser.close()
-  console.log(`Got ${rawTables.length} tables`)
-
-  // ── Map tables to pools ───────────────────────────────────────────────────
-  const poolTableMap = {}
-  let tableIdx = 0
-
-  for (const section of poolSections) {
-    const { name, tableCount } = section
-    let poolId = null
-    if (name.includes('graham')) poolId = 'graham'
-    else if (name.includes('jellie')) poolId = 'jellie'
-    else if (name.includes('matatiki') || name.includes('hornby')) poolId = 'matatiki'
-    else if (name.includes('parakiore')) poolId = 'parakiore' // map but skip below
-    else if (name.includes('pioneer')) poolId = 'pioneer'
-    else if (name.includes('taiora') || name.includes('qeii')) poolId = 'taiora'
-    else if (name.includes('linwood') || name.includes('te pou')) poolId = 'linwood'
-
-    if (poolId && tableCount > 0) {
-      poolTableMap[poolId] = rawTables.slice(tableIdx, tableIdx + tableCount)
-      console.log(`${poolId}: ${tableCount} tables`)
-    }
-    tableIdx += tableCount
-  }
-
-  // ── Parse slot data — skip Parakiore ─────────────────────────────────────
-  const result = {}
-  const SKIP = ['parakiore'] // PAR is hardcoded per-day, never overwrite
-
-  for (const [poolId, tables] of Object.entries(poolTableMap)) {
-    if (SKIP.includes(poolId)) {
-      console.log(`Skipping ${poolId} — using hardcoded per-day data`)
-      continue
-    }
-
-    const slotData = []
-    for (const table of tables) {
-      if (!table.length) continue
-      const headerRow = table[0]
-      const dayCols = headerRow.slice(1).map(h => parseDayHeader(h))
-
-      for (let r = 1; r < table.length; r++) {
-        const row = table[r]
-        if (!row.length) continue
-        const hour = parseTimeLabel(row[0])
-        if (hour === null) continue
-        dayCols.forEach((dow, ci) => {
-          if (dow === null) return
-          const lanes = parseCell(row[ci + 1] || '')
-          slotData.push({ hour, dow, lanes })
-        })
-      }
-    }
-
-    if (!slotData.length) {
-      console.log(`No data for ${poolId} — using defaults`)
-      result[poolId] = DEFAULTS[poolId]
-      continue
-    }
-
-    // Average per dow per slot
-    const dowSlots = {}
-    for (let d = 0; d <= 6; d++) dowSlots[d] = {}
-    slotData.forEach(({ hour, dow, lanes }) => {
-      if (!dowSlots[dow][hour]) dowSlots[dow][hour] = []
-      dowSlots[dow][hour].push(lanes)
-    })
-
-    const buildArray = (dows) => TIME_SLOTS.map(slot => {
-      const vals = []
-      dows.forEach(d => {
-        const dayVals = dowSlots[d]?.[slot.hour]
-        if (dayVals) {
-          const nonNull = dayVals.filter(v => v !== null)
-          if (nonNull.length) vals.push(Math.round(nonNull.reduce((a,b)=>a+b,0)/nonNull.length))
+    // Read tables *inside* each accordion, so the pool ↔ table link is structural
+    return await page.evaluate(() => {
+      const cellText = td => (td.innerText || td.textContent || '').trim()
+      return [...document.querySelectorAll('.c-accordion-alt')].map(acc => {
+        const h = acc.querySelector('[class*="heading"]')
+        return {
+          name: h ? h.innerText.trim() : '',
+          tables: [...acc.querySelectorAll('table.js-make-table-scrollable')].map(t =>
+            [...t.querySelectorAll('tr')].map(tr => [...tr.querySelectorAll('td,th')].map(cellText))
+          ),
         }
       })
-      if (!vals.length) return null
-      return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)
     })
+  } finally {
+    await browser.close()
+  }
+}
 
-    result[poolId] = {
-      wd: buildArray([1,2,3,4,5]),
-      we: buildArray([0,6]),
+// One pool's tables → { 0:[…31], 1:[…31], … 6:[…31] } or null if nothing parsed
+function buildPoolDays(tables) {
+  // byDay[dow][hour] = [counts…]  (a day can appear twice in CCC's 8-day window)
+  const byDay = {}
+  let cells = 0
+
+  for (const table of tables) {
+    if (!table.length) continue
+    const dayCols = table[0].slice(1).map(parseDayHeader)
+    for (let r = 1; r < table.length; r++) {
+      const row = table[r]
+      const hour = parseTimeLabel(row[0] || '')
+      if (hour === null) continue                 // mode row ("50m"), blank, "9.00pm" etc.
+      dayCols.forEach((dow, ci) => {
+        if (dow === null) return
+        const lanes = parseLaneCell(row[ci + 1] || '')
+        if (lanes === null) return
+        ;(byDay[dow] ??= {})[hour] ??= []
+        byDay[dow][hour].push(lanes)
+        cells++
+      })
     }
-    console.log(`${poolId} wd[0-5]:`, result[poolId].wd.slice(0,6))
   }
+  if (!cells) return null
 
-  // Fill any missing pools with defaults
-  for (const poolId of Object.keys(DEFAULTS)) {
-    if (!result[poolId]) {
-      console.log(`${poolId} missing — using defaults`)
-      result[poolId] = DEFAULTS[poolId]
-    }
+  const days = {}
+  for (let d = 0; d <= 6; d++) {
+    days[d] = SLOT_HOURS.map(h => {
+      const v = byDay[d]?.[h]
+      return v?.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null
+    })
   }
-
-  return result
+  return days
 }
 
-// ── Generate data.js ──────────────────────────────────────────────────────────
-function generateDataJs(scraped, scrapedAt) {
-  const g = scraped.graham
-  const m = scraped.matatiki
-  const p = scraped.pioneer
-  const t = scraped.taiora
-  const l = scraped.linwood
+// ── Main ──────────────────────────────────────────────────────────────────────
+const existing = existsSync(OUT_PATH)
+  ? JSON.parse(readFileSync(OUT_PATH, 'utf8'))
+  : { pools: {} }
 
-  return `// AUTO-GENERATED by scripts/scrape.js — do not edit manually
-// Last scraped: ${scrapedAt}
-// PAR (Parakiore) is hardcoded per-day-of-week — not overwritten by scraper
+const sections = await fetchSections()
+console.log('Sections found:', sections.map(s => `${s.name} (${s.tables.length} tables)`).join(' · '))
 
-export const POOLS = [
-  { id:'parakiore', name:'Parakiore',          shortName:'Parakiore',   subtitle:'Te Puna o Whakaōho · Nga Puna Wai', maxLanes:20, color:'#7ecac3', url:'https://recandsport.ccc.govt.nz/parakiore/',                        features:['50m pool','25m pool','Hydroslides','Gym'],    tip:'Largest pool in Christchurch. 20 lanes mid-morning on weekdays.' },
-  { id:'taiora',    name:'Taiora QEII',        shortName:'Taiora QEII', subtitle:'New Brighton',                       maxLanes:10, color:'#e8836a', url:'https://recandsport.ccc.govt.nz/taiora-qeii/',                      features:['50m pool','Wave pool','Hydroslides','Spa'],   tip:'Great 50m lanes, often less crowded than Parakiore.' },
-  { id:'graham',    name:'Graham Condon',       shortName:'Graham C.',   subtitle:'Bishopdale · Harewood Rd',           maxLanes:8,  color:'#a8c5a0', url:'https://recandsport.ccc.govt.nz/graham-condon/',                    features:['25m pool','Spa','Gym'],                        tip:'Community pool. Quieter, great mid-morning lanes.' },
-  { id:'matatiki',  name:'Matatiki Hornby',     shortName:'Matatiki',    subtitle:'Hornby · Shands Rd',                 maxLanes:8,  color:'#b8a4c9', url:'https://recandsport.ccc.govt.nz/matatiki-hornby-centre/',           features:['25m pool','Hydrotherapy','Gym'],               tip:'Newer facility, often less crowded than central pools.' },
-  { id:'jellie',    name:'Jellie Park',         shortName:'Jellie Park', subtitle:'Fendalton · Ilam Rd',                maxLanes:8,  color:'#c4a882', url:'https://recandsport.ccc.govt.nz/jellie-park/',                     features:['25m pool','Outdoor pool','Hydroslide','Spa'], tip:'Outdoor lanes are a bonus in good weather.' },
-  { id:'pioneer',   name:'Pioneer',             shortName:'Pioneer',     subtitle:'Spreydon · Colombo St',              maxLanes:6,  color:'#8fada0', url:'https://recandsport.ccc.govt.nz/pioneer/',                         features:['25m pool','Spa','Sauna'],                      tip:'Small, community feel. Good for quiet early mornings.' },
-  { id:'linwood',   name:'Te Pou Toetoe',       shortName:'Linwood',     subtitle:'Linwood · Linwood Ave',              maxLanes:6,  color:'#d4a0b0', url:'https://recandsport.ccc.govt.nz/te-pou-toetoe-linwood-pool/',      features:['25m pool','Learner pool'],                     tip:'Neighbourhood pool, very quiet on weekday afternoons.' },
-  { id:'lyttelton', name:'Norman Kirk Memorial', shortName:'Lyttelton',  subtitle:'Lyttelton · Summer pool',            maxLanes:4,  color:'#7eb8d4', url:'https://recandsport.ccc.govt.nz/norman-kirk-memorial-summer-pool/', features:['25m outdoor pool','Harbour views','Summer only'], tip:'Stunning outdoor pool overlooking Lyttelton Harbour. Open November to March only.', seasonal:true, seasonStart:11, seasonEnd:3, closedMessage:'Closed for winter — reopens November', openMessage:'Open now! Summer pool season' },
-]
+const pools = { ...existing.pools }
+const scraped = [], kept = []
 
-export const LANE_POOLS = POOLS.filter(p => !p.seasonal)
-
-export const TIME_PERIODS = [
-  { id:'early',     label:'Early bird', sublabel:'5:30–8am',   icon:'🌅', hourStart:5,  hourEnd:8  },
-  { id:'morning',   label:'Morning',    sublabel:'8am–12pm',   icon:'☀️', hourStart:8,  hourEnd:12 },
-  { id:'afternoon', label:'Afternoon',  sublabel:'12–4pm',     icon:'🌤️', hourStart:12, hourEnd:16 },
-  { id:'evening',   label:'Evening',    sublabel:'4–8:30pm',   icon:'🌙', hourStart:16, hourEnd:21 },
-]
-
-export const TIME_SLOTS = [
-  {label:'5:30am',hour:5.5},{label:'6:00am',hour:6},{label:'6:30am',hour:6.5},
-  {label:'7:00am',hour:7},{label:'7:30am',hour:7.5},{label:'8:00am',hour:8},
-  {label:'8:30am',hour:8.5},{label:'9:00am',hour:9},{label:'9:30am',hour:9.5},
-  {label:'10:00am',hour:10},{label:'10:30am',hour:10.5},{label:'11:00am',hour:11},{label:'11:30am',hour:11.5},
-  {label:'12:00pm',hour:12},{label:'12:30pm',hour:12.5},{label:'1:00pm',hour:13},{label:'1:30pm',hour:13.5},
-  {label:'2:00pm',hour:14},{label:'2:30pm',hour:14.5},{label:'3:00pm',hour:15},{label:'3:30pm',hour:15.5},
-  {label:'4:00pm',hour:16},{label:'4:30pm',hour:16.5},{label:'5:00pm',hour:17},{label:'5:30pm',hour:17.5},
-  {label:'6:00pm',hour:18},{label:'6:30pm',hour:18.5},{label:'7:00pm',hour:19},
-  {label:'7:30pm',hour:19.5},{label:'8:00pm',hour:20},{label:'8:30pm',hour:20.5},
-]
-
-// Parakiore: hardcoded per-day-of-week — verified from CCC (0=Sun)
-// 50m mode Mon/Wed/Fri, 25m mode Tue/Thu, varies Sat/Sun
-const PAR = {
-  1:[8,6,4,4,8,null,20,20,20,20,20,20,20,20,20,20,20,20,20,20,17,6,6,6,9,9,7,12,14,14,17],
-  2:[6,4,4,4,8,10,10,10,10,10,10,10,10,10,10,10,null,20,20,20,20,12,9,9,9,7,1,7,7,7,7],
-  3:[10,6,6,6,10,null,20,20,20,20,20,20,20,20,20,20,20,20,20,20,17,9,9,9,7,7,3,7,7,7,10],
-  4:[4,4,4,4,7,9,9,10,10,10,10,10,10,10,10,10,null,20,20,20,20,12,9,9,9,9,2,10,10,10,10],
-  5:[8,4,4,4,10,null,20,20,20,20,20,20,20,20,20,17,20,20,20,20,20,9,9,6,12,2,6,6,6,6,6],
-  6:[null,null,null,8,8,6,6,10,10,10,8,8,8,8,8,8,8,8,8,8,6,4,4,4,6,8,6,8,8,null,null],
-  0:[null,null,null,null,null,null,8,10,10,10,8,8,8,8,8,8,8,8,8,6,6,4,4,4,6,6,4,6,null,null,null],
-}
-
-const LYT_OPEN = {
-  1:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
-  2:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
-  3:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
-  4:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
-  5:[null,null,null,null,null,null,null,null,3,4,4,4,4,4,4,4,3,3,3,3,2,null,null,null,null,null,null,null,null,null,null],
-  6:[null,null,null,null,null,null,null,null,2,3,3,4,4,4,3,3,3,3,2,2,2,null,null,null,null,null,null,null,null,null,null],
-  0:[null,null,null,null,null,null,null,null,2,3,3,4,4,4,3,3,3,3,2,2,2,null,null,null,null,null,null,null,null,null,null],
-}
-
-// Auto-scraped weekly from CCC lane availability page
-const OTHER = {
-  graham:   { wd: ${JSON.stringify(g.wd)},   we: ${JSON.stringify(g.we)} },
-  matatiki: { wd: ${JSON.stringify(m.wd)}, we: ${JSON.stringify(m.we)} },
-  jellie:   { wd: ${JSON.stringify(DEFAULTS.jellie.wd)},            we: ${JSON.stringify(DEFAULTS.jellie.we)} },
-  pioneer:  { wd: ${JSON.stringify(p.wd)},  we: ${JSON.stringify(p.we)} },
-  taiora:   { wd: ${JSON.stringify(t.wd)},   we: ${JSON.stringify(t.we)} },
-  linwood:  { wd: ${JSON.stringify(l.wd)},  we: ${JSON.stringify(l.we)} },
-}
-
-export function isLytteltonOpen(date) {
-  const month = date.getMonth() + 1
-  return month >= 11 || month <= 3
-}
-
-export function getLanesForPool(poolId, date) {
-  const dow = date.getDay()
-  const isWE = dow === 0 || dow === 6
-  if (poolId === 'parakiore') return PAR[dow] || PAR[1]
-  if (poolId === 'lyttelton') {
-    if (!isLytteltonOpen(date)) return TIME_SLOTS.map(() => 0)
-    return LYT_OPEN[dow] || LYT_OPEN[1]
+for (const section of sections) {
+  const id = poolIdFromName(section.name)
+  if (!id) continue
+  const days = buildPoolDays(section.tables)
+  if (days) {
+    pools[id] = days
+    scraped.push(id)
+    console.log(`${id.padEnd(9)} ✓  Mon 9am–11am:`, days[1].slice(7, 12), ' Sun:', days[0].slice(7, 12))
+  } else {
+    kept.push(id)
+    console.log(`${id.padEnd(9)} –  no lane table (closed?) — keeping existing data`)
   }
-  const p = OTHER[poolId]
-  if (!p) return TIME_SLOTS.map(() => null)
-  return isWE ? p.we : p.wd
 }
 
-export function getAvgForPeriod(poolId, date, period) {
-  const lanes = getLanesForPool(poolId, date)
-  const vals = TIME_SLOTS
-    .map((t, i) => t.hour >= period.hourStart && t.hour < period.hourEnd ? lanes[i] : null)
-    .filter(v => v !== null && v !== undefined && v > 0)
-  if (!vals.length) return 0
-  return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length * 10) / 10
-}
-
-export function rankPools(date, period) {
-  return LANE_POOLS.map(p => {
-    const avg = getAvgForPeriod(p.id, date, period)
-    const score = avg / p.maxLanes
-    return { ...p, avg, score }
-  }).sort((a,b) => b.score - a.score)
-}
-
-export function isToday(date) {
-  return date.toDateString() === new Date().toDateString()
-}
-
-export function isTomorrow(date) {
-  const t = new Date(); t.setDate(t.getDate()+1)
-  return date.toDateString() === t.toDateString()
-}
-
-export function friendlyDate(date) {
-  if (isToday(date)) return 'Today'
-  if (isTomorrow(date)) return 'Tomorrow'
-  return date.toLocaleDateString('en-NZ',{weekday:'short',day:'numeric',month:'short'})
-}
-
-export function next365() {
-  const out=[]; const s=new Date(); s.setHours(0,0,0,0)
-  for(let i=0;i<365;i++){const d=new Date(s);d.setDate(s.getDate()+i);out.push(d)}
-  return out
-}
-`
-}
-
-// ── Run ───────────────────────────────────────────────────────────────────────
-try {
-  const scraped = await scrape()
-  const scrapedAt = new Date().toISOString()
-  const poolsFound = Object.keys(scraped).length
-  console.log(`\nScraped ${poolsFound} pools:`, Object.keys(scraped))
-
-  if (poolsFound === 0) {
-    console.error('ERROR: No pools scraped — aborting to preserve existing data')
-    process.exit(1)
-  }
-
-  const dataJs = generateDataJs(scraped, scrapedAt)
-  writeFileSync(DATA_PATH, dataJs, 'utf8')
-  console.log(`✓ Written to ${DATA_PATH}`)
-  console.log(`✓ Scraped at ${scrapedAt}`)
-} catch (err) {
-  console.error('Scrape failed:', err)
+if (!scraped.length) {
+  console.error('ERROR: no pools scraped — leaving lanes.json untouched')
   process.exit(1)
 }
+
+const out = {
+  scrapedAt: new Date().toISOString(),
+  note: 'AUTO-GENERATED by scripts/scrape.js. Lanes open to the public per 30-min slot, per day-of-week (0=Sun). null = no data / not open.',
+  pools,
+}
+
+// Compact-but-readable JSON: one line per day
+const lines = ['{', `  "scrapedAt": ${JSON.stringify(out.scrapedAt)},`, `  "note": ${JSON.stringify(out.note)},`, '  "pools": {']
+const ids = Object.keys(pools)
+ids.forEach((id, i) => {
+  lines.push(`    ${JSON.stringify(id)}: {`)
+  for (let d = 0; d <= 6; d++) lines.push(`      "${d}": ${JSON.stringify(pools[id][d])}${d < 6 ? ',' : ''}`)
+  lines.push(`    }${i < ids.length - 1 ? ',' : ''}`)
+})
+lines.push('  }', '}')
+writeFileSync(OUT_PATH, lines.join('\n') + '\n')
+
+console.log(`\n✓ Wrote ${OUT_PATH}`)
+console.log(`  scraped: ${scraped.join(', ')}`)
+if (kept.length) console.log(`  kept existing: ${kept.join(', ')}`)

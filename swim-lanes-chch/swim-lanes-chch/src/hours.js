@@ -4,13 +4,13 @@
 export const POOL_HOURS = {
   parakiore: {
     hours: [
-      [6, 21],   // Sun
+      [7, 21],   // Sun
       [5.5, 21], // Mon
       [5.5, 21], // Tue
       [5.5, 21], // Wed
       [5.5, 21], // Thu
       [5.5, 21], // Fri
-      [6, 20],   // Sat
+      [7, 20],   // Sat
     ],
   },
   taiora: {
