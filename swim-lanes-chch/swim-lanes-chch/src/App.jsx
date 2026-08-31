@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { POOLS, LANE_POOLS, TIME_PERIODS, TIME_SLOTS, getLanesForPool, rankPools, friendlyDate, isToday, next365, isLytteltonOpen } from './data.js'
+import { POOLS, LANE_POOLS, TIME_PERIODS, TIME_SLOTS, getLanesInfo, rankPools, friendlyDate, isToday, next365, isLytteltonOpen, LANES_UPDATED_AT } from './data.js'
 import { getActiveManualAlerts, mergeAlerts } from './alerts.js'
 import { getPoolStatus } from './hours.js'
 import { hasWomensSession, isWomensSlot } from './womens.js'
@@ -319,8 +319,11 @@ function HeroCard({pool,period,date}) {
     }}>
       <div style={{position:'absolute',top:-30,right:-30,width:130,height:130,borderRadius:'50%',background:pool.color+'08',pointerEvents:'none'}}/>
       <div style={{position:'absolute',top:14,right:14,width:65,height:65,borderRadius:'50%',background:pool.color+'0c',pointerEvents:'none'}}/>
-      <div style={{fontSize:10,color:C.textDim,fontWeight:600,letterSpacing:1.2,textTransform:'uppercase',marginBottom:6}}>
-        Best pick · {friendlyDate(date)} · {period.sublabel}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:6}}>
+        <div style={{fontSize:10,color:C.textDim,fontWeight:600,letterSpacing:1.2,textTransform:'uppercase'}}>
+          Best pick · {friendlyDate(date)} · {period.sublabel}
+        </div>
+        <SourceBadge exact={pool.exact}/>
       </div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14}}>
         <div>
@@ -336,7 +339,7 @@ function HeroCard({pool,period,date}) {
             <span style={{color:g.text,fontSize:12,fontWeight:600}}>{g.label}</span>
           </div>
           <div style={{color:pool.color,fontSize:21,fontWeight:700}}>
-            ~{Math.round(pool.avg)} <span style={{fontSize:11,color:C.textDim,fontWeight:400}}>lanes free</span>
+            {pool.exact?'':'~'}{Math.round(pool.avg)} <span style={{fontSize:11,color:C.textDim,fontWeight:400}}>public lanes</span>
           </div>
         </div>
       </div>
@@ -364,6 +367,22 @@ function HeroCard({pool,period,date}) {
         fontSize:13,fontWeight:700,textDecoration:'none',letterSpacing:.3,
       }}>View {pool.shortName} on CCC site →</a>
     </div>
+  )
+}
+
+// ── DATA SOURCE BADGE ─────────────────────────────────────────────────────────
+// exact = CCC's published column for this date · otherwise the typical-week pattern
+function SourceBadge({ exact }) {
+  return (
+    <span style={{
+      fontSize:10, fontWeight:600, letterSpacing:0.2, flexShrink:0,
+      color: exact ? C.aqua : C.textDim,
+      background: exact ? 'rgba(126,202,195,0.10)' : C.card2,
+      border: `1px solid ${exact ? 'rgba(126,202,195,0.30)' : C.border}`,
+      borderRadius:20, padding:'1px 7px',
+    }}>
+      {exact ? 'CCC schedule' : 'typical week · estimate'}
+    </span>
   )
 }
 
@@ -434,7 +453,7 @@ function PoolRow({pool, rank, onSelect, selected, date, period}) {
         )}
       </div>
       <div style={{textAlign:'right',flexShrink:0}}>
-        <div style={{fontSize:15,fontWeight:700,color:g.text}}>~{Math.round(pool.avg)}</div>
+        <div style={{fontSize:15,fontWeight:700,color:g.text}}>{pool.exact?'':'~'}{Math.round(pool.avg)}</div>
         <div style={{fontSize:10,color:C.textDim}}>lanes</div>
       </div>
       <div style={{background:g.bg,borderRadius:20,padding:'3px 10px',flexShrink:0,
@@ -447,7 +466,7 @@ function PoolRow({pool, rank, onSelect, selected, date, period}) {
 }
 
 function SlotSheet({pool,date,period,onClose}) {
-  const lanes=getLanesForPool(pool.id,date)
+  const { lanes, exact } = getLanesInfo(pool.id,date)
   const slots=TIME_SLOTS.filter(t=>t.hour>=period.hourStart&&t.hour<period.hourEnd)
     .map(slot=>{const i=TIME_SLOTS.findIndex(t=>t.label===slot.label);return{...slot,lanes:lanes[i]}})
   const best=[...slots].filter(s=>s.lanes!==null&&s.lanes!==undefined&&s.lanes>0).sort((a,b)=>b.lanes-a.lanes)[0]
@@ -466,8 +485,11 @@ function SlotSheet({pool,date,period,onClose}) {
         <div style={{width:32,height:3,background:C.border,borderRadius:2,margin:'0 auto 18px'}}/>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
           <div>
-            <div style={{fontSize:10,color:C.textDim,textTransform:'uppercase',letterSpacing:1,marginBottom:4}}>
-              {period.icon} {period.label} · {friendlyDate(date)}
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4,flexWrap:'wrap'}}>
+              <span style={{fontSize:10,color:C.textDim,textTransform:'uppercase',letterSpacing:1}}>
+                {period.icon} {period.label} · {friendlyDate(date)}
+              </span>
+              <SourceBadge exact={exact}/>
             </div>
             <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,color:pool.color,fontWeight:700}}>{pool.name}</div>
@@ -503,7 +525,7 @@ function SlotSheet({pool,date,period,onClose}) {
             borderRadius:12,padding:'11px 14px',marginBottom:18}}>
             <span style={{color:C.aqua,fontSize:12,fontWeight:600}}>✨ Quietest slot: </span>
             <span style={{color:C.cream,fontSize:13,fontWeight:600}}>{best.label}</span>
-            <span style={{color:C.textDim,fontSize:12}}> — ~{best.lanes} lanes</span>
+            <span style={{color:C.textDim,fontSize:12}}> — {exact?'':'~'}{best.lanes} lanes</span>
           </div>
         )}
 
@@ -742,8 +764,8 @@ export default function App() {
         {/* Footer */}
         <div style={{marginTop:32,paddingTop:20,borderTop:`1px solid ${C.border}`,textAlign:'center'}}>
           <p style={{fontSize:11,color:C.textFaint,lineHeight:1.8}}>
-            Lane counts are estimates based on published CCC patterns.<br/>
-            Tap <strong style={{color:C.textDim}}>Update lanes</strong> to fetch live data.<br/>
+            Lane counts are CCC's published schedule for the coming week,<br/>
+            and typical-week estimates beyond that. Data from {new Date(LANES_UPDATED_AT).toLocaleDateString('en-NZ',{weekday:'short',day:'numeric',month:'short'})}.<br/>
             Always confirm with the pool before your swim.<br/>
             <a href="https://recandsport.ccc.govt.nz/" target="_blank" rel="noreferrer"
               style={{color:C.aquaDim}}>recandsport.ccc.govt.nz</a> · 📞 03 941 6446

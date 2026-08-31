@@ -57,23 +57,42 @@ export function isLytteltonOpen(date) {
   return month >= 11 || month <= 3
 }
 
-// Lanes open to the public for each 30-min slot on the given date (per day-of-week)
-export function getLanesForPool(poolId, date) {
+// Local calendar date → "YYYY-MM-DD" (matches the keys the scraper writes in NZ time)
+export function dateKey(date) {
+  const p = n => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`
+}
+
+// Lanes open to the public for each 30-min slot on the given date, plus where
+// the numbers came from: exact = CCC's published column for that date,
+// otherwise the typical-week pattern for that day-of-week.
+export function getLanesInfo(poolId, date) {
   const dow = date.getDay()
   if (poolId === 'lyttelton') {
-    if (!isLytteltonOpen(date)) return TIME_SLOTS.map(() => 0)
-    return LYT_OPEN[dow] || EMPTY
+    if (!isLytteltonOpen(date)) return { lanes: TIME_SLOTS.map(() => 0), exact: false }
+    return { lanes: LYT_OPEN[dow] || EMPTY, exact: false }
   }
   const pool = LANES.pools[poolId]
-  if (!pool) return EMPTY
-  return pool[dow] || EMPTY
+  if (!pool) return { lanes: EMPTY, exact: false }
+  const dated = pool.dates?.[dateKey(date)]
+  if (dated) return { lanes: dated, exact: true }
+  return { lanes: pool.pattern?.[dow] || EMPTY, exact: false }
+}
+
+export function getLanesForPool(poolId, date) {
+  return getLanesInfo(poolId, date).lanes
+}
+
+// True when every ranked pool has CCC's exact column for this date
+export function isExactDate(date) {
+  return LANE_POOLS.every(p => getLanesInfo(p.id, date).exact)
 }
 
 export function getAvgForPeriod(poolId, date, period) {
   const lanes = getLanesForPool(poolId, date)
   const vals = TIME_SLOTS
     .map((t, i) => t.hour >= period.hourStart && t.hour < period.hourEnd ? lanes[i] : null)
-    .filter(v => v !== null && v !== undefined && v > 0)
+    .filter(v => v !== null && v !== undefined)
   if (!vals.length) return 0
   return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length * 10) / 10
 }
@@ -82,7 +101,8 @@ export function rankPools(date, period) {
   return LANE_POOLS.map(p => {
     const avg = getAvgForPeriod(p.id, date, period)
     const score = avg / p.maxLanes
-    return { ...p, avg, score }
+    const exact = getLanesInfo(p.id, date).exact
+    return { ...p, avg, score, exact }
   }).sort((a,b) => b.score - a.score)
 }
 
