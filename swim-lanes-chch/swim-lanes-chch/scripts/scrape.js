@@ -59,15 +59,25 @@ const fromKey = k => new Date(k + 'T00:00:00Z')
 const daysBetween = (a, b) => Math.round((fromKey(b) - fromKey(a)) / 86400000)
 
 // "Sat 29/8" → { dow: 6, key: "2026-08-29" }   ·   "Sat" → { dow: 6, key: null }
-// The header has no year, so pick the year that puts the date within the
-// recent past / near future of today AND whose weekday matches the label.
+// Tolerant of whatever the rendered header looks like: "Sat\n29/8", "Sat, 29/08",
+// "Sat 29.8", "Saturday 29 Aug". The header has no year, so pick the year that
+// puts the date near today AND whose weekday matches the label.
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 function parseDayHeader(text, today) {
   const t = text.replace(/\s+/g, ' ').trim()
-  const m = t.match(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\w*\s*(?:(\d{1,2})\/(\d{1,2}))?/i)
-  if (!m) return null
-  const dow = DOW.indexOf(m[1].toLowerCase().slice(0, 3))
-  if (!m[2]) return { dow, key: null }
-  const day = +m[2], month = +m[3]
+  const dm = t.match(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)/i)
+  if (!dm) return null
+  const dow = DOW.indexOf(dm[1].toLowerCase())
+
+  let day = null, month = null
+  let m = t.match(/(\d{1,2})\s*[\/.\-]\s*(\d{1,2})/)
+  if (m) { day = +m[1]; month = +m[2] }
+  else {
+    m = t.match(/(\d{1,2})\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i)
+    if (m) { day = +m[1]; month = MONTHS.indexOf(m[2].toLowerCase()) + 1 }
+  }
+  if (!day || !month) return { dow, key: null }
+
   const y = +today.slice(0, 4)
   for (const year of [y, y + 1, y - 1]) {
     const d = new Date(Date.UTC(year, month - 1, day))
@@ -216,6 +226,8 @@ for (const [id, p] of Object.entries(existing.pools)) pools[id] = p
 for (const section of sections) {
   const id = poolIdFromName(section.name)
   if (!id) continue
+  const rawHeader = section.tables[0]?.[0] || []
+  console.log(`${id.padEnd(9)}    header: ${JSON.stringify(rawHeader)}`)
   const parsed = parseTables(section.tables, today)
   if (!parsed) {
     kept.push(id)
@@ -234,7 +246,8 @@ for (const section of sections) {
   scraped.push(id)
 
   const keys = Object.keys(parsed.dates).sort()
-  console.log(`${id.padEnd(9)} ✓  ${keys.length} dated cols (${keys[0]} → ${keys.at(-1)}), ${Object.keys(dates).length} retained`)
+  const undated = Object.keys(parsed.dowOnly).length
+  console.log(`${id.padEnd(9)} ✓  ${keys.length ? `${keys.length} dated cols (${keys[0]} → ${keys.at(-1)})` : 'NO dated cols'}${undated ? `, ${undated} undated` : ''}, ${Object.keys(dates).length} retained`)
 }
 
 if (!scraped.length) {
