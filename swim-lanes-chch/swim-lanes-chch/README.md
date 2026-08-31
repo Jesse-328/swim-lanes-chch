@@ -1,6 +1,6 @@
 # 🌊 Swim Lanes Ōtautahi
 
-Find the quietest lane swimming across all Christchurch Recreation & Sport pools.
+Find the most public lanes for lap swimming across Christchurch Recreation & Sport pools.
 
 ## Deploy to Vercel
 
@@ -15,7 +15,8 @@ URL will be: `https://swim-lanes-chch.vercel.app`
 ## Features
 - All 7 CCC pools ranked by lane quietness
 - Filter by pool, day (full year), time of day
-- Update button fetches live data from CCC
+- Lane numbers come from CCC's published schedule, scraped weekly (Mon 6am NZ) by GitHub Actions
+- "Check for closures" button looks for closure notices on the CCC page
 - Tap any pool for 30-min slot breakdown
 - Works as iPhone home screen app
 

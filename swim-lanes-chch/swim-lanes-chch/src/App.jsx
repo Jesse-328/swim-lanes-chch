@@ -6,12 +6,12 @@ import { hasWomensSession, isWomensSlot } from './womens.js'
 
 const C = {
   bg:'#0d1b2a', card:'#112236', card2:'#162b40',
-  aqua:'#7ecac3', aquaDim:'#3a8a84',
+  aqua:'#7ecac3', aquaDim:'#4a9d96',
   cream:'#f5ede0', creamDim:'#c8b8a4',
   coral:'#e8836a', sage:'#8fada0',
   navy:'#1a3a52', navyL:'#2a5070',
   border:'#1e3a52', borderL:'#2a5070',
-  text:'#f5ede0', textDim:'#8fada0', textFaint:'#3d6a82',
+  text:'#f5ede0', textDim:'#8fada0', textFaint:'#5a8aa3',
   womens:'#c084fc',   // soft lavender-purple for women's session accent
 }
 
@@ -95,7 +95,7 @@ function AlertBanner({ alerts }) {
                   {pool ? pool.shortName : alert.poolId}
                 </span>
                 <span style={{
-                  fontSize: 10, fontWeight: 600,
+                  fontSize:11, fontWeight: 600,
                   color: accentColor,
                   background: isClosed ? 'rgba(232,131,106,0.12)' : 'rgba(251,191,36,0.12)',
                   border: `1px solid ${borderColor}`,
@@ -109,7 +109,7 @@ function AlertBanner({ alerts }) {
               </p>
               {pool && (
                 <a href={pool.url} target="_blank" rel="noreferrer"
-                  style={{ fontSize: 11, color: accentColor, textDecoration: 'none', marginTop: 4, display: 'inline-block' }}>
+                  style={{ fontSize:12, color: accentColor, textDecoration: 'none', marginTop: 4, display: 'inline-block' }}>
                   Check CCC for updates →
                 </a>
               )}
@@ -140,7 +140,7 @@ function PeriodPicker({value,onChange}) {
       {TIME_PERIODS.map(p=>{
         const sel = value.id===p.id
         return (
-          <button key={p.id} onClick={()=>onChange(p)} style={{
+          <button key={p.id} onClick={()=>onChange(p)} aria-pressed={sel} style={{
             flex:1,background:sel?C.navy:'transparent',
             border:`1.5px solid ${sel?C.aqua:C.border}`,
             borderRadius:14,padding:'11px 6px',
@@ -149,8 +149,8 @@ function PeriodPicker({value,onChange}) {
             fontFamily:"'DM Sans',sans-serif",
           }}>
             <span style={{fontSize:20}}>{p.icon}</span>
-            <span style={{fontSize:11,fontWeight:600}}>{p.label}</span>
-            <span style={{fontSize:10,opacity:.7}}>{p.sublabel}</span>
+            <span style={{fontSize:12,fontWeight:600}}>{p.label}</span>
+            <span style={{fontSize:11,opacity:.7}}>{p.sublabel}</span>
           </button>
         )
       })}
@@ -166,15 +166,15 @@ function DayStrip({value,onChange}) {
         const sel=d.toDateString()===value.toDateString()
         const lbl=i===0?'Today':i===1?'Tmrw':d.toLocaleDateString('en-NZ',{weekday:'short'})
         return (
-          <button key={i} onClick={()=>onChange(d)} style={{
+          <button key={i} onClick={()=>onChange(d)} aria-pressed={sel} aria-label={d.toLocaleDateString('en-NZ',{weekday:'long',day:'numeric',month:'long'})} style={{
             flex:1,background:sel?C.aqua+'18':C.card,
             border:`1.5px solid ${sel?C.aqua:C.border}`,
             borderRadius:12,padding:'8px 3px',
             color:sel?C.aqua:C.textDim,cursor:'pointer',
-            fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:sel?600:400,
+            fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:sel?600:400,
           }}>
             <div>{lbl}</div>
-            <div style={{fontSize:10,marginTop:2,color:sel?C.aqua:C.textFaint}}>{d.getDate()}</div>
+            <div style={{fontSize:11,marginTop:2,color:sel?C.aqua:C.textFaint}}>{d.getDate()}</div>
           </button>
         )
       })}
@@ -200,7 +200,7 @@ function CalModal({value,onChange,onClose}) {
   return (
     <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(5,12,20,.88)',zIndex:300,
       display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:'22px 22px 0 0',
+      <div role="dialog" aria-modal="true" aria-label="Pick a date" onClick={e=>e.stopPropagation()} style={{background:C.card,borderRadius:'22px 22px 0 0',
         border:`1.5px solid ${C.border}`,borderBottom:'none',
         padding:'20px 18px 36px',width:'100%',maxWidth:480,maxHeight:'85vh',overflowY:'auto'}}>
         <div style={{width:32,height:3,background:C.border,borderRadius:2,margin:'0 auto 18px'}}/>
@@ -213,7 +213,7 @@ function CalModal({value,onChange,onClose}) {
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:6}}>
           {['S','M','T','W','T','F','S'].map((d,i)=>(
-            <div key={i} style={{textAlign:'center',fontSize:10,color:C.textFaint,padding:'2px 0',fontWeight:700}}>{d}</div>
+            <div key={i} style={{textAlign:'center',fontSize:11,color:C.textFaint,padding:'2px 0',fontWeight:700}}>{d}</div>
           ))}
         </div>
         {(()=>{
@@ -245,7 +245,7 @@ function CalModal({value,onChange,onClose}) {
             </div>
           )
         })()}
-        <div style={{marginTop:14,display:'flex',alignItems:'center',gap:6,fontSize:11,color:C.textFaint}}>
+        <div style={{marginTop:14,display:'flex',alignItems:'center',gap:6,fontSize:12,color:C.textFaint}}>
           <span style={{width:6,height:6,borderRadius:'50%',background:'#7eb8d4',display:'inline-block'}}/>
           Lyttelton pool open (Nov–Mar)
         </div>
@@ -275,7 +275,7 @@ function SeasonalPoolCard({ pool, date }) {
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
             <span style={{fontSize:13,fontWeight:600,color:open?pool.color:C.textDim}}>{pool.shortName}</span>
-            <span style={{fontSize:10,fontWeight:600,
+            <span style={{fontSize:11,fontWeight:600,
               color:open?pool.color:C.textFaint,
               background:open?pool.color+'18':C.card2,
               border:`1px solid ${open?pool.color+'44':C.border}`,
@@ -283,7 +283,7 @@ function SeasonalPoolCard({ pool, date }) {
               {open?'🌊 Open now':'❄️ Winter closure'}
             </span>
           </div>
-          <div style={{fontSize:11,color:C.textDim}}>
+          <div style={{fontSize:12,color:C.textDim}}>
             {open?pool.openMessage:pool.closedMessage}
             {!open&&monthsUntilOpen()>0&&<span style={{color:C.textFaint}}> · {monthsUntilOpen()} months away</span>}
           </div>
@@ -291,12 +291,12 @@ function SeasonalPoolCard({ pool, date }) {
         <a href={pool.url} target="_blank" rel="noreferrer" style={{
           background:open?pool.color:C.card2,color:open?C.bg:C.textDim,
           border:`1px solid ${open?pool.color:C.border}`,
-          borderRadius:10,padding:'6px 12px',fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0,
+          borderRadius:10,padding:'6px 12px',fontSize:12,fontWeight:600,textDecoration:'none',flexShrink:0,
         }}>Info →</a>
       </div>
       <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}>
         {pool.features.map(f=>(
-          <span key={f} style={{fontSize:10,color:open?C.textDim:C.textFaint,
+          <span key={f} style={{fontSize:11,color:open?C.textDim:C.textFaint,
             background:C.card2,border:`1px solid ${C.border}`,
             borderRadius:20,padding:'2px 9px'}}>{f}</span>
         ))}
@@ -320,7 +320,7 @@ function HeroCard({pool,period,date}) {
       <div style={{position:'absolute',top:-30,right:-30,width:130,height:130,borderRadius:'50%',background:pool.color+'08',pointerEvents:'none'}}/>
       <div style={{position:'absolute',top:14,right:14,width:65,height:65,borderRadius:'50%',background:pool.color+'0c',pointerEvents:'none'}}/>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,marginBottom:6}}>
-        <div style={{fontSize:10,color:C.textDim,fontWeight:600,letterSpacing:1.2,textTransform:'uppercase'}}>
+        <div style={{fontSize:11,color:C.textDim,fontWeight:600,letterSpacing:1.2,textTransform:'uppercase'}}>
           Best pick · {friendlyDate(date)} · {period.sublabel}
         </div>
         <SourceBadge exact={pool.exact}/>
@@ -339,14 +339,14 @@ function HeroCard({pool,period,date}) {
             <span style={{color:g.text,fontSize:12,fontWeight:600}}>{g.label}</span>
           </div>
           <div style={{color:pool.color,fontSize:21,fontWeight:700}}>
-            {pool.exact?'':'~'}{Math.round(pool.avg)} <span style={{fontSize:11,color:C.textDim,fontWeight:400}}>public lanes</span>
+            {pool.exact?'':'~'}{Math.round(pool.avg)} <span style={{fontSize:12,color:C.textDim,fontWeight:400}}>public lanes</span>
           </div>
         </div>
       </div>
       <div style={{marginBottom:14}}>
         <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
-          <span style={{fontSize:11,color:C.textDim}}>Quietness</span>
-          <span style={{fontSize:11,color:g.text}}>{pct}%</span>
+          <span style={{fontSize:12,color:C.textDim}}>Quietness</span>
+          <span style={{fontSize:12,color:g.text}}>{pct}%</span>
         </div>
         <div style={{height:5,background:C.border,borderRadius:3,overflow:'hidden'}}>
           <div style={{height:'100%',width:`${pct}%`,
@@ -357,7 +357,7 @@ function HeroCard({pool,period,date}) {
       <div style={{fontSize:12,color:C.creamDim,lineHeight:1.6,marginBottom:16}}>{pool.tip}</div>
       <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:16}}>
         {pool.features.map(f=>(
-          <span key={f} style={{fontSize:11,color:C.textDim,background:C.card2,
+          <span key={f} style={{fontSize:12,color:C.textDim,background:C.card2,
             border:`1px solid ${C.border}`,borderRadius:20,padding:'3px 10px'}}>{f}</span>
         ))}
       </div>
@@ -375,7 +375,7 @@ function HeroCard({pool,period,date}) {
 function SourceBadge({ exact }) {
   return (
     <span style={{
-      fontSize:10, fontWeight:600, letterSpacing:0.2, flexShrink:0,
+      fontSize:11, fontWeight:600, letterSpacing:0.2, flexShrink:0,
       color: exact ? C.aqua : C.textDim,
       background: exact ? 'rgba(126,202,195,0.10)' : C.card2,
       border: `1px solid ${exact ? 'rgba(126,202,195,0.30)' : C.border}`,
@@ -390,7 +390,7 @@ function SourceBadge({ exact }) {
 function WomensBadge() {
   return (
     <span style={{
-      fontSize: 10, fontWeight: 600,
+      fontSize:11, fontWeight: 600,
       color: C.womens,
       background: 'rgba(192,132,252,0.10)',
       border: `1px solid rgba(192,132,252,0.28)`,
@@ -406,7 +406,7 @@ function WomensBadge() {
 function PoolRow({pool, rank, onSelect, selected, date, period}) {
   const pct=Math.round(pool.score*100)
   const g=grade(pct)
-  const status=getPoolStatus(pool.id)
+  const status=getPoolStatus(pool.id, date)
   const womens = hasWomensSession(pool.id, date, period)
 
   const statusColor = status
@@ -428,13 +428,13 @@ function PoolRow({pool, rank, onSelect, selected, date, period}) {
         background:rank===0?pool.color+'22':C.card2,
         border:`1px solid ${rank===0?pool.color:C.border}`,
         display:'flex',alignItems:'center',justifyContent:'center',
-        fontSize:11,color:rank===0?pool.color:C.textFaint,fontWeight:700}}>
+        fontSize:12,color:rank===0?pool.color:C.textFaint,fontWeight:700}}>
         {rank+1}
       </div>
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:4,flexWrap:'wrap'}}>
           <span style={{fontSize:13,fontWeight:600,color:selected?pool.color:C.text}}>{pool.shortName}</span>
-          {rank===0&&<span style={{fontSize:10,color:pool.color,background:pool.color+'18',
+          {rank===0&&<span style={{fontSize:11,color:pool.color,background:pool.color+'18',
             borderRadius:20,padding:'1px 8px',fontWeight:600}}>Best</span>}
           {womens && <WomensBadge />}
         </div>
@@ -444,22 +444,23 @@ function PoolRow({pool, rank, onSelect, selected, date, period}) {
             borderRadius:2,transition:'width .5s ease'}}/>
         </div>
         {status && (
-          <div style={{fontSize:10,color:statusColor,display:'flex',alignItems:'center',gap:4}}>
-            {status.status==='closing' && <span style={{fontSize:9}}>⚠</span>}
-            {status.status==='closed'  && <span style={{fontSize:9}}>●</span>}
-            {status.status==='open'    && <span style={{fontSize:9,color:pool.color}}>●</span>}
+          <div style={{fontSize:11,color:statusColor,display:'flex',alignItems:'center',gap:4}}>
+            {status.status==='closing' && <span style={{fontSize:10}}>⚠</span>}
+            {status.status==='closed'  && <span style={{fontSize:10}}>●</span>}
+            {status.status==='hours'   && <span style={{fontSize:10}}>○</span>}
+            {status.status==='open'    && <span style={{fontSize:10,color:pool.color}}>●</span>}
             {status.label}
           </div>
         )}
       </div>
       <div style={{textAlign:'right',flexShrink:0}}>
         <div style={{fontSize:15,fontWeight:700,color:g.text}}>{pool.exact?'':'~'}{Math.round(pool.avg)}</div>
-        <div style={{fontSize:10,color:C.textDim}}>lanes</div>
+        <div style={{fontSize:11,color:C.textDim}}>lanes</div>
       </div>
       <div style={{background:g.bg,borderRadius:20,padding:'3px 10px',flexShrink:0,
         display:'flex',alignItems:'center',gap:5}}>
         <span style={{width:6,height:6,borderRadius:'50%',background:g.dot,display:'block'}}/>
-        <span style={{fontSize:11,color:g.text,fontWeight:500}}>{g.label}</span>
+        <span style={{fontSize:12,color:g.text,fontWeight:500}}>{g.label}</span>
       </div>
     </button>
   )
@@ -477,7 +478,7 @@ function SlotSheet({pool,date,period,onClose}) {
   return (
     <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(5,12,20,.90)',zIndex:200,
       display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-      <div onClick={e=>e.stopPropagation()} style={{
+      <div role="dialog" aria-modal="true" aria-label={`${pool.name} lane slots`} onClick={e=>e.stopPropagation()} style={{
         background:C.card,borderRadius:'22px 22px 0 0',
         border:`1.5px solid ${pool.color}44`,borderBottom:'none',
         padding:'20px 18px 36px',width:'100%',maxWidth:480,maxHeight:'85vh',overflowY:'auto',
@@ -486,7 +487,7 @@ function SlotSheet({pool,date,period,onClose}) {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
           <div>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4,flexWrap:'wrap'}}>
-              <span style={{fontSize:10,color:C.textDim,textTransform:'uppercase',letterSpacing:1}}>
+              <span style={{fontSize:11,color:C.textDim,textTransform:'uppercase',letterSpacing:1}}>
                 {period.icon} {period.label} · {friendlyDate(date)}
               </span>
               <SourceBadge exact={exact}/>
@@ -511,7 +512,7 @@ function SlotSheet({pool,date,period,onClose}) {
             <span style={{fontSize:15,flexShrink:0}}>♀</span>
             <div>
               <div style={{fontSize:12,fontWeight:600,color:C.womens,marginBottom:2}}>Women's swimming session</div>
-              <div style={{fontSize:11,color:C.creamDim,lineHeight:1.5}}>
+              <div style={{fontSize:12,color:C.creamDim,lineHeight:1.5}}>
                 Some slots during this period are women-only. Lane availability may differ.
                 <a href="https://recandsport.ccc.govt.nz/womens-sessions/" target="_blank" rel="noreferrer"
                   style={{color:C.womens,textDecoration:'none',marginLeft:5}}>CCC info →</a>
@@ -544,15 +545,15 @@ function SlotSheet({pool,date,period,onClose}) {
               }}>
                 <div>
                   <div style={{color:C.text,fontSize:13,fontWeight:600}}>{slot.label}</div>
-                  {isBest&&<div style={{color:pool.color,fontSize:10,marginTop:2}}>★ quietest</div>}
-                  {isWomens&&!isBest&&<div style={{color:C.womens,fontSize:10,marginTop:2}}>♀ women's</div>}
-                  {isWomens&&isBest&&<div style={{color:pool.color,fontSize:10,marginTop:2}}>★ quietest · ♀</div>}
+                  {isBest&&<div style={{color:pool.color,fontSize:11,marginTop:2}}>★ quietest</div>}
+                  {isWomens&&!isBest&&<div style={{color:C.womens,fontSize:11,marginTop:2}}>♀ women's</div>}
+                  {isWomens&&isBest&&<div style={{color:pool.color,fontSize:11,marginTop:2}}>★ quietest · ♀</div>}
                 </div>
                 <div style={{textAlign:'right'}}>
                   <div style={{color:g.text,fontSize:18,fontWeight:700}}>
                     {slot.lanes===null||slot.lanes===undefined?'—':slot.lanes===0?'✕':slot.lanes}
                   </div>
-                  {slot.lanes>0&&<div style={{color:C.textDim,fontSize:10}}>lanes</div>}
+                  {slot.lanes>0&&<div style={{color:C.textDim,fontSize:11}}>lanes</div>}
                 </div>
               </div>
             )
@@ -565,8 +566,9 @@ function SlotSheet({pool,date,period,onClose}) {
 
 function PoolChips({active,onChange}) {
   return (
-    <div style={{display:'flex',gap:7,overflowX:'auto',paddingBottom:3,scrollbarWidth:'none'}}>
-      <button onClick={()=>onChange(null)} style={{
+    <div style={{display:'flex',gap:7,overflowX:'auto',paddingBottom:3,scrollbarWidth:'none',
+      WebkitMaskImage:'linear-gradient(90deg,#000 88%,transparent)',maskImage:'linear-gradient(90deg,#000 88%,transparent)'}}>
+      <button onClick={()=>onChange(null)} aria-pressed={!active} style={{
         background:!active?C.aqua+'18':'transparent',
         border:`1.5px solid ${!active?C.aqua:C.border}`,
         borderRadius:20,padding:'6px 14px',color:!active?C.aqua:C.textDim,
@@ -574,7 +576,7 @@ function PoolChips({active,onChange}) {
         cursor:'pointer',whiteSpace:'nowrap',flexShrink:0,
       }}>All pools</button>
       {LANE_POOLS.map(p=>(
-        <button key={p.id} onClick={()=>onChange(active===p.id?null:p.id)} style={{
+        <button key={p.id} onClick={()=>onChange(active===p.id?null:p.id)} aria-pressed={active===p.id} style={{
           background:active===p.id?p.color+'20':'transparent',
           border:`1.5px solid ${active===p.id?p.color:C.border}`,
           borderRadius:20,padding:'6px 13px',
@@ -600,17 +602,17 @@ function UpdateBtn({onClick,loading,at}) {
         display:'flex',alignItems:'center',gap:7,transition:'all .2s',
       }}>
         <span className={loading?'spinning':''} style={{fontSize:14,display:'inline-block'}}>↻</span>
-        {loading?'Checking CCC…':'Update lanes'}
+        {loading?'Checking CCC…':'Check for closures'}
       </button>
-      {at&&<span style={{fontSize:11,color:C.textDim}}>
-        Updated {new Date(at).toLocaleTimeString('en-NZ',{hour:'2-digit',minute:'2-digit'})}
+      {at&&<span style={{fontSize:12,color:C.textDim}}>
+        Checked {new Date(at).toLocaleTimeString('en-NZ',{hour:'2-digit',minute:'2-digit'})}
       </span>}
     </div>
   )
 }
 
 function Label({children}) {
-  return <div style={{fontSize:10,color:C.textDim,fontWeight:600,letterSpacing:1.3,
+  return <div style={{fontSize:11,color:C.textDim,fontWeight:600,letterSpacing:1.3,
     textTransform:'uppercase',marginBottom:10}}>{children}</div>
 }
 
@@ -635,8 +637,21 @@ export default function App() {
     if(h<8) setPeriod(TIME_PERIODS[0])
     else if(h<12) setPeriod(TIME_PERIODS[1])
     else if(h<16) setPeriod(TIME_PERIODS[2])
-    else setPeriod(TIME_PERIODS[3])
+    else if(h<20) setPeriod(TIME_PERIODS[3])
+    else { // evening's over — show tomorrow's early bird
+      const t=new Date(); t.setDate(t.getDate()+1); t.setHours(0,0,0,0)
+      setDate(t); setPeriod(TIME_PERIODS[0])
+    }
   },[])
+
+  // Lock page scroll behind sheets; Escape closes them
+  useEffect(()=>{
+    const open=showCal||!!detailPool
+    document.body.style.overflow=open?'hidden':''
+    const onKey=e=>{ if(e.key==='Escape'){ setShowCal(false); setDetailPool(null) } }
+    window.addEventListener('keydown',onKey)
+    return ()=>{ document.body.style.overflow=''; window.removeEventListener('keydown',onKey) }
+  },[showCal,detailPool])
 
   const showToast=useCallback((msg,ok=true)=>{
     setToast({msg,ok}); setTimeout(()=>setToast(null),3200)
@@ -648,12 +663,13 @@ export default function App() {
       const r=await fetch('/api/lanes')
       const j=await r.json()
       setUpdatedAt(j.fetchedAt)
-      const merged = mergeAlerts(j.alerts || [], getActiveManualAlerts())
-      setAlerts(merged)
-      if(j.success) showToast('Lane data refreshed from CCC ✓')
-      else showToast('CCC unavailable — showing estimated data',false)
+      const live = j.alerts || []
+      setAlerts(mergeAlerts(live, getActiveManualAlerts()))
+      if(!j.success) showToast('CCC unavailable — showing saved notices',false)
+      else if(live.length) showToast(`${live.length} notice${live.length>1?'s':''} found on CCC`)
+      else showToast('No closures reported by CCC')
     } catch {
-      showToast('Could not connect — showing estimated data',false)
+      showToast('Could not reach CCC — showing saved notices',false)
     } finally { setLoading(false) }
   },[showToast])
 
@@ -670,7 +686,7 @@ export default function App() {
         padding:'54px 20px 50px'}}>
         <Waves/>
         <div style={{position:'relative',zIndex:1}}>
-          <div style={{fontSize:10,color:C.aqua,fontWeight:600,letterSpacing:2.5,
+          <div style={{fontSize:11,color:C.aqua,fontWeight:600,letterSpacing:2.5,
             textTransform:'uppercase',marginBottom:10}}>Ōtautahi · Christchurch</div>
           <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:32,fontWeight:700,
             color:C.cream,lineHeight:1.15,marginBottom:8}}>
@@ -699,7 +715,7 @@ export default function App() {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22}}>
           <UpdateBtn onClick={doUpdate} loading={loading} at={updatedAt}/>
           <a href="https://recandsport.ccc.govt.nz/swim/lane-availability/" target="_blank" rel="noreferrer"
-            style={{fontSize:11,color:C.textFaint,textDecoration:'none'}}>CCC site ↗</a>
+            style={{fontSize:12,color:C.textFaint,textDecoration:'none'}}>CCC lane page ↗</a>
         </div>
 
         {/* Date */}
@@ -714,7 +730,7 @@ export default function App() {
             display:'flex',justifyContent:'space-between',alignItems:'center',
           }}>
             <span>📅 {date>new Date(todayDate.getTime()+6*86400000)?`Viewing ${friendlyDate(date)}`:'Pick another date'}</span>
-            <span style={{fontSize:11}}>{showCal?'▲':'▼'}</span>
+            <span style={{fontSize:12}}>{showCal?'▲':'▼'}</span>
           </button>
         </div>
 
@@ -750,7 +766,7 @@ export default function App() {
                 onSelect={()=>setDetailPool(detailPool?.id===p.id?null:p)}/>
             ))}
           </div>
-          <p style={{fontSize:11,color:C.textFaint,marginTop:12,textAlign:'center',lineHeight:1.6}}>
+          <p style={{fontSize:12,color:C.textFaint,marginTop:12,textAlign:'center',lineHeight:1.6}}>
             Tap a pool to see every 30-min slot for {period.label.toLowerCase()}
           </p>
         </div>
@@ -763,7 +779,7 @@ export default function App() {
 
         {/* Footer */}
         <div style={{marginTop:32,paddingTop:20,borderTop:`1px solid ${C.border}`,textAlign:'center'}}>
-          <p style={{fontSize:11,color:C.textFaint,lineHeight:1.8}}>
+          <p style={{fontSize:12,color:C.textFaint,lineHeight:1.8}}>
             Lane counts are CCC's published schedule for the coming week,<br/>
             and typical-week estimates beyond that. Data from {new Date(LANES_UPDATED_AT).toLocaleDateString('en-NZ',{weekday:'short',day:'numeric',month:'short'})}.<br/>
             Always confirm with the pool before your swim.<br/>

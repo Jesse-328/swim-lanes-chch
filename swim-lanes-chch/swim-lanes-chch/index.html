@@ -43,6 +43,9 @@
       }
       .fade-up  { animation: fadeUp 0.35s ease forwards; }
       .spinning { animation: spin 0.9s linear infinite; display: inline-block; }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation: none !important; transition: none !important; }
+      }
       ::-webkit-scrollbar { width: 3px; height: 3px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #2a4a5e; border-radius: 4px; }
